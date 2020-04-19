@@ -1,0 +1,43 @@
+# TVP sequence chart
+msc {
+  hscale = 1.7;
+  EH [label="Enclave Host", linecolor="#c00000", arclinecolor="#c08080"],
+  VE [label="Voting Enclave", linecolor="#00c000", arclinecolor="#80c080"],
+  V [label="Voter", linecolor="#0000c0", arclinecolor="#8080c0"];
+
+  --- [label="Enclave initialization"];
+  EH => VE [label="init enclave"];
+  VE rbox VE [label="generate key pair"];
+  VE rbox VE [label="generate enclave report"];
+  VE >> EH [label="{report(VE), pubkey(VE)}"];
+  EH rbox EH [label="generate quote(VE)"];
+  EH rbox EH [label="get IASQ(VE) = IAS report(quote(VE))"];
+  |||;
+  --- [label="Voting registration"];
+  EH => VE [label="VD\n{desc, num_options, start_time, end_time, voters[pubkey, weight]}"];
+  VE rbox VE [label="generate vid_nonce"];
+  VE rbox VE [label="VID = hash(VD|vid_nonce)"];
+  VE rbox VE [label="save voters list"];
+  VE >> EH [label="VDVE\n{vid_nonce, sig(VE, VID)}"];
+  EH =>> V [label="VDEH\n{VD, VDVE, sig(EH, hash(VD|VDVE)), IASQ(VE), pubkey(VE)}"];
+  V rbox V [label="Check VD.start_time"];
+  V rbox V [label="Verify IASQ(VE)"];
+  |||;
+  --- [label="Voting start"];
+  EH => VE [label="start voting\nVID"];
+  VE rbox VE [label="start accepting votes"];
+  |||;
+  --- [label="Vote"];
+  ... [label="TODO: V/VE handshake through EH"];
+  V =>> VE [label="VV\n{vote {pubkey, VID, option}, sig(V, hash(vote))}"];
+  VE rbox VE [label="check voters list for eligibility"];
+  VE rbox VE [label="save RV {vote, nonce}"];
+  VE rbox VE [label="update option count according to voter weight"];
+  VE => V [label="VVR\n{RV, sig(VE, hash(RV) | VID)}"];
+  |||;
+  --- [label="Voting end"];
+  EH => VE [label="stop voting\nVID"];
+  VE rbox VE [label="stop accepting votes"];
+  VE => EH [label="VRVE\n{VID, results[option, count], votes[hash(RV)], sig(VE, VRVE)}"];
+  EH =>> V [label="VREH\n{VRVE, sig(EH, VREH)}"];
+}
