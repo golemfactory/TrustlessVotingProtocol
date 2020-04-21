@@ -1,0 +1,26 @@
+enclave {
+    include "stdbool.h"
+    include "sgx_tkey_exchange.h"
+    from "sgx_tstdc.edl" import *;
+
+    trusted {
+        public int e_initialize(
+            [in, size=sealed_size] uint8_t* sealed_data,
+            size_t sealed_size,
+            [out, size=pubkey_size] uint8_t* pubkey,
+            size_t pubkey_size);
+
+        public int e_get_report(
+            [in] const sgx_target_info_t* target_info,
+            [out] sgx_report_t* report);
+    };
+
+    untrusted {
+        void o_print(
+            [in, string] const char* str);
+
+        int o_store_sealed_data(
+            [in, size=data_size] const uint8_t* data,
+            size_t data_size);
+    };
+};

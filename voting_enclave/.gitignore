@@ -1,0 +1,22 @@
+*.gz
+*.meta
+*.mrsigner
+*.o
+*.pem
+*.so
+*.so.sig
+*.so.sigdata
+
+/mbedtls
+/ve_app
+
+# generated files
+/voting_enclave_mrsigner.h
+/voting_enclave_t.c
+/voting_enclave_t.h
+/voting_enclave_u.c
+/voting_enclave_u.h
+
+/ve_pubkey
+*.quote
+*.state
