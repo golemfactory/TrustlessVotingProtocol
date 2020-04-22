@@ -33,13 +33,12 @@ static void zero_memory(void* mem, size_t size) {
 
 #define PRINT_BUFFER_MAX 4096
 static void eprintf(const char* fmt, ...) {
-	char buf[PRINT_BUFFER_MAX];
-	buf[PRINT_BUFFER_MAX - 1] = 0;
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(buf, PRINT_BUFFER_MAX, fmt, ap);
-	va_end(ap);
-	o_print(buf);
+    char buf[PRINT_BUFFER_MAX];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, PRINT_BUFFER_MAX, fmt, ap);
+    va_end(ap);
+    o_print(buf);
 }
 
 static void _hexdump(void* data, size_t size) {
