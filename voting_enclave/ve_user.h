@@ -16,26 +16,26 @@ ssize_t get_file_size(int fd);
 /*!
  *  \brief Read file contents to buffer.
  *
- *  \param[in]     buffer Buffer to read data to. If NULL, this function allocates one.
  *  \param[in]     path   Path to the file.
+ *  \param[in]     buffer Buffer to read data to. If NULL, this function allocates one.
  *  \param[in,out] size   On entry, number of bytes to read. 0 means to read the entire file.
  *                        On exit, number of bytes read.
  *
  *  \return On success, pointer to the data buffer. If \p buffer was NULL, caller should free this.
  *          On failure, NULL.
  */
-void* read_file(void* buffer, const char* path, size_t* size);
+void* read_file(const char* path, void* buffer, size_t* size);
 
 /*!
  *  \brief Write buffer to file.
  *
  *  \param[in] path   File path.
- *  \param[in] size   \p buffer size.
  *  \param[in] buffer Buffer to write data from.
+ *  \param[in] size   \p buffer size.
  *
  *  \return 0 on success, errno on error.
  */
-int write_file(const char* path, size_t size, const void* buffer);
+int write_file(const char* path, const void* buffer, size_t size);
 
 /*!
  *  \brief Initialize voting enclave.

@@ -21,7 +21,7 @@ ssize_t get_file_size(int fd) {
     return st.st_size;
 }
 
-void* read_file(void* buffer, const char* path, size_t* size) {
+void* read_file(const char* path, void* buffer, size_t* size) {
     FILE* f = NULL;
     ssize_t fs = 0;
     void* buf = buffer;
@@ -71,7 +71,7 @@ out:
     return buffer;
 }
 
-int write_file(const char* path, size_t size, const void* buffer) {
+int write_file(const char* path, const void* buffer, size_t size) {
     FILE* f = NULL;
     int status;
 
@@ -150,7 +150,7 @@ static int load_ve(const char* enclave_path, bool debug_enabled, const char* sea
 
     if (load_sealed_state) {
         printf("Loading sealed enclave state from '%s'\n", sealed_state_path);
-        sealed_state = read_file(NULL, sealed_state_path, &sealed_size); // may return NULL
+        sealed_state = read_file(sealed_state_path, NULL, &sealed_size); // may return NULL
         if (sealed_state == NULL)
             goto out;
     }
@@ -177,7 +177,7 @@ static int load_ve(const char* enclave_path, bool debug_enabled, const char* sea
 
     if (public_key_path) {
         printf("Saving public enclave key to '%s'\n", public_key_path);
-        ret = write_file(public_key_path, EC_KEY_SIZE, &enclave_public_key);
+        ret = write_file(public_key_path, &enclave_public_key, EC_KEY_SIZE);
     } else {
         ret = 0;
     }
@@ -238,7 +238,7 @@ static int generate_enclave_quote(sgx_spid_t sp_id, sgx_quote_sign_type_t quote_
     // TODO: ideally this nonce would be received from a 3rd party on a different system
     // that will verify the QE report
     size_t nonce_size = sizeof(qe_nonce);
-    if (!read_file(&qe_nonce, "/dev/urandom", &nonce_size)) {
+    if (!read_file("/dev/urandom", &qe_nonce, &nonce_size)) {
         ret = -1;
         goto out;
     }
@@ -294,7 +294,7 @@ static int generate_enclave_quote(sgx_spid_t sp_id, sgx_quote_sign_type_t quote_
         goto out;
     }
 
-    if (write_file(quote_path, quote_size, quote) == 0) {
+    if (write_file(quote_path, quote, quote_size) == 0) {
         printf("Enclave quote saved to '%s'\n", quote_path);
     } else {
         goto out;
@@ -368,7 +368,7 @@ int ve_unload_enclave(void) {
 // OCALL: save sealed enclave state
 int o_store_sealed_data(const uint8_t* sealed_data, size_t sealed_size) {
     printf("Saving sealed enclave state to '%s'\n", g_sealed_state_path);
-    return write_file(g_sealed_state_path, sealed_size, sealed_data);
+    return write_file(g_sealed_state_path, sealed_data, sealed_size);
 }
 
 // OCALL: print string
