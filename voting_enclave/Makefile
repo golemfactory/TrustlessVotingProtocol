@@ -162,7 +162,7 @@ $(ENCLAVE_NAME)_u.o: $(ENCLAVE_NAME)_u.c
 # application
 
 $(APP_BIN): $(APP_NAME).o $(LIBRARY_BIN)
-	$(CC) $^ $(LDFLAGS) -L. -l$(LIBRARY_NAME) -o $@
+	$(CC) $(LDFLAGS) -Wl,-rpath=. $< -o $@ -L. -l$(LIBRARY_NAME)
 
 $(APP_NAME).o: $(APP_NAME).c
 	$(CC) $(CFLAGS) -c $< -o $@
