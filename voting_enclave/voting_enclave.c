@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include <mbedtls/ctr_drbg.h>
-#include <mbedtls/ecdsa.h>
+#include <mbedtls/ecp.h>
 #include <mbedtls/entropy.h>
 
 #include <sgx_thread.h>
@@ -240,6 +240,25 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size, mbedtls_e
     ret = mbedtls_ecp_check_pubkey(&g_ec_group, &key_pair->Q);
     if (ret != 0) {
         eprintf("Unsealed public key in invalid: %d\n", ret);
+        goto out;
+    }
+
+    mbedtls_ecp_point Q;
+    mbedtls_ecp_point_init(&Q);
+    mbedtls_ecp_group grp;
+    mbedtls_ecp_group_init(&grp);
+
+    /* For some reasone mbedtls_ecp_mul grp argument is non-const, copying just in case. */
+    mbedtls_ecp_group_copy(&grp, &key_pair->grp);
+
+    ret = mbedtls_ecp_mul(&grp, &Q, &key_pair->d, &key_pair->grp.G, NULL, NULL);
+    if (ret != 0) {
+        eprintf("Failed to generate public key from private: %d\n", ret);
+        goto out;
+    }
+
+    if (mbedtls_ecp_point_cmp(&Q, &key_pair->Q)) {
+        eprintf("Unsealed public key does not match private key!\n");
         goto out;
     }
 
