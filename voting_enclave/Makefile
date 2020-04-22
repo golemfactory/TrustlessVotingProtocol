@@ -38,6 +38,7 @@ CFLAGS += \
     -m64 \
     -Wall \
     -Wextra \
+    -Werror \
     -D_GNU_SOURCE \
     -fPIC \
     -fstack-protector \
