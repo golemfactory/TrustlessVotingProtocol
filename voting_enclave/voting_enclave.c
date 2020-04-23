@@ -36,6 +36,18 @@ static sgx_thread_mutex_t       g_mutex = SGX_THREAD_MUTEX_INITIALIZER;
  */
 static const sgx_attributes_t g_seal_attributes = {ENCLAVE_SEALING_ATTRIBUTES, 0};
 
+typedef struct {
+    tvp_voting_id_t vid;
+    uint32_t num_options;
+    size_t num_voters;
+    tvp_voter_t* voters;
+    size_t num_votes;
+    tvp_registered_vote_t* votes;
+} voting_t;
+
+static voting_t g_voting = { 0 };
+static bool g_voting_registered = false;
+
 static void zero_memory(void* mem, size_t size) {
     memset_s(mem, size, 0, size);
 }
@@ -132,8 +144,7 @@ static int seal_data(const mbedtls_ecp_keypair* key_pair, const uint8_t* public_
     }
 
     // private key
-    // function that restores it expects little-endian data so we use this write variant
-    ret = mbedtls_mpi_write_binary_le(&key_pair->d, unsealed_data, private_key_size);
+    ret = mbedtls_mpi_write_binary(&key_pair->d, unsealed_data, private_key_size);
     if (ret != 0) {
         eprintf("Failed to get private key data: %d\n", ret);
         goto out;
@@ -389,6 +400,218 @@ int e_get_report(const sgx_target_info_t* target_info, sgx_report_t* report) {
     //memcpy(&report_data, g_public_key, sizeof g_public_key);
 
     return get_report(target_info, &report_data, report);
+}
+
+static int copy_untrusted_buffer(void** dest, void* src, size_t len) {
+    void* buf = NULL;
+    if (!*dest) {
+        buf = malloc(len);
+        if (!buf) {
+            return -1;
+        }
+        *dest = buf;
+    }
+
+    if (!sgx_is_outside_enclave(src, len)) {
+        goto out_err;
+    }
+    sgx_lfence();
+
+    memcpy(*dest, src, len);
+
+    return 0;
+
+out_err:
+    free(buf);
+    return -1;
+}
+
+static int hash_update_voter(mbedtls_sha256_context* sha, const tvp_voter_t* voter) {
+    if (mbedtls_sha256_update_ret(sha, voter->public_key, sizeof(voter->public_key))) {
+        return -1;
+    }
+    if (mbedtls_sha256_update_ret(sha, (unsigned char*)&voter->weight, sizeof(voter->weight))) {
+        return -1;
+    }
+    return 0;
+}
+
+// TODO: move to utils
+static int hash_voting(tvp_voting_id_t* vid, const uint8_t* nonce, size_t nonce_len,
+                       const tvp_msg_register_voting_eh_ve_t* vd) {
+    static_assert(sizeof(vid->vid) == 32, "Invalid hash size!\n");
+    int ret;
+    mbedtls_sha256_context sha = { 0 };
+
+    mbedtls_sha256_init(&sha);
+
+    ret = mbedtls_sha256_starts_ret(&sha, /*is224=*/0);
+    if (ret) {
+        goto out;
+    }
+
+    ret = mbedtls_sha256_update_ret(&sha, nonce, nonce_len);
+    if (ret) {
+        goto out;
+    }
+
+#define ADD_FIELD_TO_SHA(f) do {                                                        \
+        ret = mbedtls_sha256_update_ret(&sha, (unsigned char*)&vd->f, sizeof(vd->f));   \
+        if (ret) {                                                                      \
+            goto out;                                                                   \
+        }                                                                               \
+    } while (0)
+
+    ADD_FIELD_TO_SHA(start_time);
+    ADD_FIELD_TO_SHA(end_time);
+    ADD_FIELD_TO_SHA(num_options);
+    ADD_FIELD_TO_SHA(num_voters);
+    for (size_t i = 0; i < vd->num_voters; ++i) {
+        ret = hash_update_voter(&sha, &vd->voters[i]);
+        if (ret) {
+            goto out;
+        }
+    }
+    ADD_FIELD_TO_SHA(description_size);
+    ret = mbedtls_sha256_update_ret(&sha, (unsigned char*)vd->description, vd->description_size);
+    if (ret) {
+        goto out;
+    }
+#undef ADD_FIELD_TO_SHA
+
+    ret = mbedtls_sha256_finish_ret(&sha, vid->vid);
+    if (ret) {
+        goto out;
+    }
+
+    ret = 0;
+out:
+    mbedtls_sha256_free(&sha);
+    return ret;
+}
+
+// TODO: move to utils
+static int generate_nonce(nonce_t* nonce) {
+    return mbedtls_ctr_drbg_random(&g_rng, (unsigned char*)nonce, sizeof(*nonce));
+}
+
+// TODO: move to utils
+static int sign_hash(uint8_t* sig, size_t slen, const uint8_t* hash, size_t hlen, mbedtls_ecp_keypair* key) {
+    int ret = -1;
+    mbedtls_mpi r;
+    mbedtls_mpi s;
+    mbedtls_mpi_init(&r);
+    mbedtls_mpi_init(&s);
+
+    ret = mbedtls_ecdsa_sign(&key->grp, &r, &s, &key->d, hash, hlen,
+                             mbedtls_ctr_drbg_random, &g_rng);
+    if (ret) {
+        goto out;
+    }
+
+    if (mbedtls_mpi_size(&r) != slen / 2 || mbedtls_mpi_size(&s) != slen / 2) {
+        goto out;
+    }
+
+    ret = mbedtls_mpi_write_binary(&r, sig, slen / 2);
+    if (ret) {
+        goto out;
+    }
+    ret = mbedtls_mpi_write_binary(&s, sig + slen / 2, slen / 2);
+    if (ret) {
+        goto out;
+    }
+
+    ret = 0;
+out:
+    mbedtls_mpi_free(&r);
+    mbedtls_mpi_free(&s);
+    return ret;
+}
+
+/* ECALL: register new voting */
+int e_register_voting(uint8_t* voting_description, size_t vd_size,
+                      uint8_t* vdve_buf, size_t vdve_size) {
+    int ret = -1;
+    tvp_voter_t* voters = NULL;
+    char* description = NULL;
+
+    sgx_thread_mutex_lock(&g_mutex);
+
+    if (!g_initialized) {
+        goto out;
+    }
+
+    if (g_voting_registered) {
+        eprintf("Voting already initialized!\n");
+        goto out;
+    }
+
+    if (vd_size != sizeof(tvp_msg_register_voting_eh_ve_t)) {
+        eprintf("Invalid voting_description size: %zu\n", vd_size);
+        goto out;
+    }
+    if (vdve_size != sizeof(tvp_msg_register_voting_ve_eh_t)) {
+        eprintf("Invalid vdve size: %zu\n", vdve_size);
+        goto out;
+    }
+
+    tvp_msg_register_voting_eh_ve_t* vd = (tvp_msg_register_voting_eh_ve_t*)voting_description;
+
+    if (copy_untrusted_buffer((void**)&voters, vd->voters, vd->num_voters * sizeof(tvp_voter_t)) < 0) {
+        eprintf("Failed to copy voters list!\n");
+        goto out;
+    }
+    if (copy_untrusted_buffer((void**)&description, vd->description, vd->description_size) < 0) {
+        eprintf("Failed to copy voting description!\n");
+        goto out;
+    }
+
+    vd->voters = voters;
+    vd->description = description;
+
+    nonce_t nonce = { 0 };
+    if (generate_nonce(&nonce)) {
+        eprintf("Failed to generate a nonce!\n");
+        goto out;
+    }
+
+    if (hash_voting(&g_voting.vid, (uint8_t*)&nonce, sizeof(nonce), vd)) {
+        eprintf("Failed to hash voting!\n");
+        goto out;
+    }
+    g_voting.num_options = vd->num_options;
+    g_voting.num_voters = vd->num_voters;
+    /* We take ownership of `voters`. */
+    g_voting.voters = voters;
+    voters = NULL;
+    g_voting.num_votes = 0;
+    g_voting.votes = NULL;
+
+    signature_t sig = { 0 };
+    if (sign_hash((uint8_t*)&sig, sizeof(sig), (uint8_t*)&g_voting.vid, sizeof(g_voting.vid),
+                  &g_signing_key)) {
+        eprintf("Failed to sign voting hash!\n");
+        goto out;
+    }
+
+    tvp_msg_register_voting_ve_eh_t* vdve = (tvp_msg_register_voting_ve_eh_t*)vdve_buf;
+
+    memcpy(&vdve->vid_nonce, &nonce, sizeof(nonce));
+    memcpy(&vdve->vid_sig, &sig, sizeof(signature_t));
+
+    g_voting_registered = true;
+    ret = 0;
+
+out:
+    if (voters) {
+        free(voters);
+    }
+    if (description) {
+        free(description);
+    }
+    sgx_thread_mutex_unlock(&g_mutex);
+    return ret;
 }
 
 void mbedtls_platform_zeroize(void* buf, size_t size) {

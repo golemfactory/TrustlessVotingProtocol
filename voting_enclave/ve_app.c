@@ -120,6 +120,8 @@ int main(int argc, char* argv[]) {
             if (ret < 0)
                 goto out;
 
+            ve_submit_voting();
+
             ret = ve_unload_enclave();
             break;
         }

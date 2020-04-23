@@ -72,4 +72,6 @@ int ve_load_enclave(const char* enclave_path, const char* sealed_state_path);
  */
 int ve_unload_enclave(void);
 
+int ve_submit_voting(void);
+
 #endif /* VE_USER_H */

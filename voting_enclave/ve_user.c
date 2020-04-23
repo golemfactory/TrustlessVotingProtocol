@@ -366,6 +366,45 @@ int ve_unload_enclave(void) {
     return ret;
 }
 
+int ve_submit_voting(void) {
+    /* Just a testing data.
+     * TODO: receive it from outside. */
+    tvp_voter_t voters[2] = {
+        { "a", 3},
+        { "b", 4},
+    };
+    tvp_msg_register_voting_eh_ve_t voting_description = {
+        .num_options = 4,
+        .num_voters = 2,
+        .voters = voters,
+        .description_size = 4,
+        .description = "abcd",
+    };
+
+    tvp_msg_register_voting_ve_eh_t vdve = { 0 };
+
+    int ret = 0;
+    sgx_status_t sgx_ret = e_register_voting(g_enclave_id, &ret,
+                                (uint8_t*)&voting_description, sizeof(voting_description),
+                                (uint8_t*)&vdve, sizeof(vdve));
+    if (sgx_ret != SGX_SUCCESS || ret < 0) {
+        fprintf(stderr, "Voting registration failed: %d\n", ret);
+        return ret;
+    }
+
+    printf("Nonce: ");
+    for (size_t i = 0; i < sizeof(vdve.vid_nonce); ++i) {
+        printf("%02hhx", vdve.vid_nonce[i]);
+    }
+    printf("\nSig: ");
+    for (size_t i = 0; i < sizeof(vdve.vid_sig); ++i) {
+        printf("%02hhx", vdve.vid_sig[i]);
+    }
+    printf("\n");
+
+    return 0;
+}
+
 // OCALL: save sealed enclave state
 int o_store_sealed_data(const uint8_t* sealed_data, size_t sealed_size) {
     printf("Saving sealed enclave state to '%s'\n", g_sealed_state_path);

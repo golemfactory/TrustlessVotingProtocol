@@ -13,6 +13,12 @@ enclave {
         public int e_get_report(
             [in] const sgx_target_info_t* target_info,
             [out] sgx_report_t* report);
+
+        public int e_register_voting(
+            [in, size=vd_size] uint8_t* voting_description,
+            size_t vd_size,
+            [out, size=vdve_size] uint8_t* vdve,
+            size_t vdve_size);
     };
 
     untrusted {
