@@ -1,31 +1,40 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <mbedtls/ctr_drbg.h>
+#include <mbedtls/ecdsa.h>
 #include <mbedtls/ecp.h>
 #include <mbedtls/entropy.h>
 
+#include <sgx_lfence.h>
 #include <sgx_thread.h>
+#include <sgx_trts.h>
 #include <sgx_utils.h>
+
+#include "tvp_msg.h"
 
 #include "voting_enclave.h"
 #include "voting_enclave_t.h"
 #include "voting_enclave_mrsigner.h"
 
-bool                     g_initialized             = false;
-uint8_t                  g_public_key[EC_KEY_SIZE] = {0};
-mbedtls_ecp_keypair      g_signing_key             = {0};
-mbedtls_ecp_group        g_ec_group                = {0};
-mbedtls_ctr_drbg_context g_rng                     = {0};
-sgx_thread_mutex_t       g_mutex = SGX_THREAD_MUTEX_INITIALIZER;
+/* Intel's assert.h does not define this. */
+#define static_assert _Static_assert
+
+static bool                     g_initialized                 = false;
+static uint8_t                  g_public_key[EC_PUB_KEY_SIZE] = {0};
+static mbedtls_ecp_keypair      g_signing_key                 = {0};
+static mbedtls_ecp_group        g_ec_group                    = {0};
+static mbedtls_ctr_drbg_context g_rng                         = {0};
+static sgx_thread_mutex_t       g_mutex = SGX_THREAD_MUTEX_INITIALIZER;
 
 /*! Enclave flags that will matter for sealing/unsealing secrets (keys).
  *  The second field (xfrm) is set to 0 as per recommendation in the
  *  Intel SGX Developer Guide, Sealing and Unsealing Process section.
  */
-const sgx_attributes_t g_seal_attributes = {ENCLAVE_SEALING_ATTRIBUTES, 0};
+static const sgx_attributes_t g_seal_attributes = {ENCLAVE_SEALING_ATTRIBUTES, 0};
 
 static void zero_memory(void* mem, size_t size) {
     memset_s(mem, size, 0, size);
@@ -194,7 +203,7 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size, mbedtls_e
         goto out;
     }
 
-    if (unsealed_size != EC_KEY_SIZE + public_key_size) {
+    if (unsealed_size != EC_PRIV_KEY_SIZE + public_key_size) {
         eprintf("Invalid unsealed data size\n");
         goto out;
     }
@@ -217,7 +226,7 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size, mbedtls_e
 
     sgx_ret = SGX_ERROR_UNEXPECTED;
     // recreate private key from the unsealed blob
-    int ret = mbedtls_ecp_read_key(EC_CURVE_ID, key_pair, unsealed_data, EC_KEY_SIZE);
+    int ret = mbedtls_ecp_read_key(EC_CURVE_ID, key_pair, unsealed_data, EC_PRIV_KEY_SIZE);
     if (ret != 0) {
         eprintf("Failed to recreate private key: %d\n", ret);
         goto out;
@@ -225,11 +234,11 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size, mbedtls_e
 
     ret = mbedtls_ecp_check_privkey(&g_ec_group, &key_pair->d);
     if (ret != 0) {
-        eprintf("Unsealed private key in invalid: %d\n", ret);
+        eprintf("Unsealed private key is invalid: %d\n", ret);
         goto out;
     }
 
-    memcpy(public_key, unsealed_data + EC_KEY_SIZE, public_key_size);
+    memcpy(public_key, unsealed_data + EC_PRIV_KEY_SIZE, public_key_size);
 
     ret = mbedtls_ecp_point_read_binary(&g_ec_group, &key_pair->Q, public_key, public_key_size);
     if (ret != 0) {
@@ -239,26 +248,7 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size, mbedtls_e
 
     ret = mbedtls_ecp_check_pubkey(&g_ec_group, &key_pair->Q);
     if (ret != 0) {
-        eprintf("Unsealed public key in invalid: %d\n", ret);
-        goto out;
-    }
-
-    mbedtls_ecp_point Q;
-    mbedtls_ecp_point_init(&Q);
-    mbedtls_ecp_group grp;
-    mbedtls_ecp_group_init(&grp);
-
-    /* For some reasone mbedtls_ecp_mul grp argument is non-const, copying just in case. */
-    mbedtls_ecp_group_copy(&grp, &key_pair->grp);
-
-    ret = mbedtls_ecp_mul(&grp, &Q, &key_pair->d, &key_pair->grp.G, NULL, NULL);
-    if (ret != 0) {
-        eprintf("Failed to generate public key from private: %d\n", ret);
-        goto out;
-    }
-
-    if (mbedtls_ecp_point_cmp(&Q, &key_pair->Q)) {
-        eprintf("Unsealed public key does not match private key!\n");
+        eprintf("Unsealed public key is invalid: %d\n", ret);
         goto out;
     }
 
@@ -341,6 +331,12 @@ int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size
             goto out;
     }
 
+    if (mbedtls_mpi_size(&g_signing_key.d) != EC_PRIV_KEY_SIZE) {
+        eprintf("Invalid key size: %zu\n", mbedtls_mpi_size(&g_signing_key.d));
+        ret = -1;
+        goto out;
+    }
+
     eprintf("Enclave public key: ");
     hexdump(g_public_key);
 
@@ -388,8 +384,9 @@ int e_get_report(const sgx_target_info_t* target_info, sgx_report_t* report) {
     sgx_report_data_t report_data = {0};
 
     // Use public key as custom data in the report
-    assert(sizeof g_public_key <= sizeof report_data);
-    memcpy(&report_data, g_public_key, sizeof g_public_key);
+    // Since we use different curve now, skip this.
+    //assert(sizeof g_public_key <= sizeof report_data);
+    //memcpy(&report_data, g_public_key, sizeof g_public_key);
 
     return get_report(target_info, &report_data, report);
 }

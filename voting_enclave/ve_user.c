@@ -8,6 +8,7 @@
 #include <mbedtls/sha256.h>
 #include <sgx_uae_service.h>
 
+#include "tvp_msg.h"
 #include "ve_user.h"
 #include "voting_enclave.h"
 #include "voting_enclave_u.h"
@@ -155,12 +156,12 @@ static int load_ve(const char* enclave_path, bool debug_enabled, const char* sea
             goto out;
     }
 
-    uint8_t enclave_public_key[EC_KEY_SIZE];
+    uint8_t enclave_public_key[EC_PUB_KEY_SIZE];
     // ECALL: enclave initialization
     sgx_status_t sgx_ret;
     if (public_key_path) {
         sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size, enclave_public_key,
-                               EC_KEY_SIZE);
+                               EC_PUB_KEY_SIZE);
     } else {
         sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size, NULL, 0);
     }
@@ -177,7 +178,7 @@ static int load_ve(const char* enclave_path, bool debug_enabled, const char* sea
 
     if (public_key_path) {
         printf("Saving public enclave key to '%s'\n", public_key_path);
-        ret = write_file(public_key_path, &enclave_public_key, EC_KEY_SIZE);
+        ret = write_file(public_key_path, &enclave_public_key, EC_PUB_KEY_SIZE);
     } else {
         ret = 0;
     }

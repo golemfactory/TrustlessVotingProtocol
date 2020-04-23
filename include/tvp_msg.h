@@ -1,5 +1,10 @@
+#ifndef _TVP_MSG_H
+#define _TVP_MSG_H
+
 #include <stdint.h>
 #include <sgx_report.h>
+
+#pragma pack(push, 1)
 
 /*
 Message/struct definitions for Trustless Voting Protocol.
@@ -11,14 +16,14 @@ V  <-> VE messages need to be serialized for network transport or other medium a
           who sends them to/from the VE.
 V  <-> EH messages need to be serialized as well.
 
-asymmetric keys: ED25519
+asymmetric keys: EC SECP256R1
 hash: sha256
 */
 
 typedef uint8_t nonce_t[32];
 typedef uint8_t hash_t[32];
-typedef uint8_t public_key_t[32];
-typedef uint8_t private_key_t[64];
+typedef uint8_t public_key_t[65];
+typedef uint8_t private_key_t[32];
 typedef uint8_t signature_t[64];
 
 // protocol message type
@@ -30,7 +35,7 @@ typedef enum {
     TVP_MSG_REGISTER_VOTING_VE_EH,
     TVP_MSG_REGISTER_VOTING_EH_V,
     TVP_MSG_REQUEST_VD_V_EH,
-    TVP_MSG_START_VOTING_EH_VE,        
+    TVP_MSG_START_VOTING_EH_VE,
     TVP_MSG_VOTE_V_VE,
     TVP_MSG_VOTE_VE_V,
     TVP_MSG_STOP_VOTING_EH_VE,
@@ -53,7 +58,7 @@ typedef struct { // VE -> EH
 /*
 register voting:
 EH->VE  VD:{desc, num_options, start_time, end_time, voters[public_key, weight]}
-        VE saves voters, VID {hash(VD | vid_nonce)} vid_nonce is unique per voting
+        VE saves voters, VID {hash(vid_nonce | VD)} vid_nonce is unique per voting
         VE->EH  VDVE:{vid_nonce, sig(VE, VID)} VDVE doesn't include VD, no need for that
         EH->V   VDEH:{VD, VDVE, sig(EH, hash(VD | VDVE)), quote(VE), pubkey(VE)}
                 V verifies receiving before start_time
@@ -65,17 +70,17 @@ typedef struct {
 } tvp_voter_t;
 
 typedef struct { // EH -> VE [VD]
-    size_t       description_size;
-    char*        description;    // [!] pointer to untrusted memory, or embedded here in serialized form
-    uint32_t     num_options;
     char         start_time[32]; // ISO-8601
     char         end_time[32];   // ISO-8601
+    uint32_t     num_options;
     uint32_t     num_voters;
     tvp_voter_t* voters;         // [!] pointer to untrusted memory, or embedded here in serialized form
+    size_t       description_size;
+    char*        description;    // [!] pointer to untrusted memory, or embedded here in serialized form
 } tvp_msg_register_voting_eh_ve_t;
 
 typedef struct {
-    hash_t vid; // hash(VD | vid_nonce) [VID]
+    hash_t vid; // hash(vid_nonce | VD) [VID]
 } tvp_voting_id_t;
 
 typedef struct { // VE -> EH [VDVE]
@@ -169,3 +174,7 @@ typedef struct { // V -> EH
     tvp_voting_id_t vid;
 } tvp_msg_request_vr_v_eh_t;
 // response: tvp_msg_stop_voting_eh_v_t
+
+#pragma pack(pop)
+
+#endif // _TVP_MSG_H
