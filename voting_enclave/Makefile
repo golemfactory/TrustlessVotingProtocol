@@ -27,53 +27,56 @@ MBEDTLS_CHECKSUM ?= 94ac6bdd209248028bd94b20bfac769e7922dda15c40c67a6170b0a58e79
 ##############################################################################
 
 ifeq ($(DEBUG), 1)
-    CFLAGS += -O0 -g
-    MBED_BUILD_TYPE = Debug
+	CFLAGS += -O0 -g
+	MBED_BUILD_TYPE = Debug
 else
-    CFLAGS += -O2
-    MBED_BUILD_TYPE = Release
+	CFLAGS += -O2
+	MBED_BUILD_TYPE = Release
 endif
 
 CFLAGS += \
-    -m64 \
-    -Wall \
-    -Wextra \
-    -Werror \
-    -D_GNU_SOURCE \
-    -fPIC \
-    -fstack-protector \
-    -I$(SGX_INC) \
-    -std=c11
+	-m64 \
+	-Wall \
+	-Wextra \
+	-Werror \
+	-D_GNU_SOURCE \
+	-fPIC \
+	-fstack-protector \
+	-I$(SGX_INC) \
+	-std=c11
 
 .PHONY: all
 all: check_key $(ENCLAVE_BINARY_SIGNED) $(LIBRARY_BIN) $(APP_BIN)
 
 $(MBEDTLS_SRC):
 	./download.sh --output $@ --url $(MBEDTLS_URI)/$(MBEDTLS_SRC) --sha256 $(MBEDTLS_CHECKSUM)
-	tar -mxzf $(MBEDTLS_SRC)
-	mv mbedtls-mbedtls-$(MBEDTLS_VERSION) $(MBEDTLS)
+
+$(MBEDTLS): $(MBEDTLS_SRC)
+	tar -mxzf $<
+	mv mbedtls-mbedtls-$(MBEDTLS_VERSION) $@
 	patch -p1 --forward < mbedtls.patch
 
-.PHONY:
-mbedtls: $(MBEDTLS_SRC) mbedtls_config.h
-	cp mbedtls_config.h $(MBEDTLS)/include/mbedtls/config.h
-	cd mbedtls && make CFLAGS="-fPIC" lib && cd ..
+$(MBEDTLS)/.build_succeeded: mbedtls_config.h $(MBEDTLS)
+	cp $< $(MBEDTLS)/include/mbedtls/config.h
+	cd $(MBEDTLS) && make CFLAGS="-fPIC" lib
+	touch $@
 
 ##############################################################################
 # enclave
 
 CFLAGS_ENCLAVE := $(CFLAGS) \
-    -nostdinc \
-    -I$(SGX_INC)/tlibc \
-    -I$(MBEDTLS_INC)
+	-nostdinc \
+	-I$(SGX_INC)/tlibc \
+	-I$(MBEDTLS_INC) \
+	-I../include
 
 LDFLAGS_ENCLAVE := -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles \
-    -L$(SGX_LIB) \
-    -Wl,--whole-archive -lsgx_trts -Wl,--no-whole-archive \
-    -Wl,--start-group -lsgx_tstdc -lsgx_tcxx -lsgx_tcrypto -lsgx_tservice -Wl,--end-group \
-    -Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
-    -Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
-    -Wl,--defsym,__ImageBase=0
+	-L$(SGX_LIB) \
+	-Wl,--whole-archive -lsgx_trts -Wl,--no-whole-archive \
+	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -lsgx_tcrypto -lsgx_tservice -Wl,--end-group \
+	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
+	-Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
+	-Wl,--defsym,__ImageBase=0
 
 SGX_EDGER8R := $(SGX_SDK)/bin/x64/sgx_edger8r
 SGX_SIGNER := $(SGX_SDK)/bin/x64/sgx_sign
@@ -82,16 +85,16 @@ MRSIGNER := $(ENCLAVE_NAME).mrsigner
 MRSIGNER_H := $(ENCLAVE_NAME)_mrsigner.h
 
 MBEDTLS_OBJS_ENCLAVE := \
-    $(MBEDTLS_LIB)/aes.o \
-    $(MBEDTLS_LIB)/aesni.o \
+	$(MBEDTLS_LIB)/aes.o \
+	$(MBEDTLS_LIB)/aesni.o \
 	$(MBEDTLS_LIB)/asn1parse.o \
 	$(MBEDTLS_LIB)/asn1write.o \
 	$(MBEDTLS_LIB)/bignum.o \
-    $(MBEDTLS_LIB)/ctr_drbg.o \
+	$(MBEDTLS_LIB)/ctr_drbg.o \
 	$(MBEDTLS_LIB)/ecdsa.o \
 	$(MBEDTLS_LIB)/ecp.o \
 	$(MBEDTLS_LIB)/ecp_curves.o \
-    $(MBEDTLS_LIB)/entropy.o \
+	$(MBEDTLS_LIB)/entropy.o \
 	$(MBEDTLS_LIB)/sha256.o
 
 .PHONY: check_key
@@ -121,10 +124,10 @@ $(MRSIGNER): $(ENCLAVE_SIGNING_PUBLIC_KEY) openssl_parse.awk
 $(MRSIGNER_H): $(MRSIGNER)
 	xxd -i -c 8 $(MRSIGNER) > $@
 
-$(ENCLAVE_BINARY): $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o mbedtls
+$(ENCLAVE_BINARY): $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o $(MBEDTLS)/.build_succeeded
 	$(CC) $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o $(MBEDTLS_OBJS_ENCLAVE) $(LDFLAGS_ENCLAVE) -o $@
 
-$(ENCLAVE_NAME).o: $(ENCLAVE_NAME).c $(MRSIGNER_H) $(ENCLAVE_NAME)_u.c mbedtls
+$(ENCLAVE_NAME).o: $(ENCLAVE_NAME).c $(MRSIGNER_H) $(ENCLAVE_NAME)_u.c $(MBEDTLS)/.build_succeeded
 	$(CC) $(CFLAGS_ENCLAVE) -c $< -o $@
 
 $(ENCLAVE_NAME)_t.o: $(ENCLAVE_NAME)_t.c
@@ -141,14 +144,15 @@ $(ENCLAVE_NAME)_u.c: $(ENCLAVE_NAME).edl
 # untrusted library
 
 CFLAGS_LIB := $(CFLAGS) \
-    -I$(MBEDTLS_INC)
+	-I$(MBEDTLS_INC) \
+	-I../include
 
 MBEDTLS_OBJS_LIB := \
 	$(MBEDTLS_LIB)/sha256.o
 
 LDFLAGS_LIB := -lcrypto \
-    -L$(SGX_LIB) -lsgx_urts -lsgx_uae_service \
-    -shared
+	-L$(SGX_LIB) -lsgx_urts -lsgx_uae_service \
+	-shared
 
 $(LIBRARY_BIN): $(LIBRARY_NAME).o $(ENCLAVE_NAME)_u.o
 	$(CC) $^ $(MBEDTLS_OBJS_LIB) $(LDFLAGS_LIB) -o $@
@@ -185,7 +189,11 @@ endif
 
 .PHONY: clean
 clean:
-	$(RM) *.gz *.o *.so $(APP_BIN)
+	$(RM) *.o *.so $(APP_BIN)
 	$(RM) $(ENCLAVE_NAME)_t.c $(ENCLAVE_NAME)_t.h $(ENCLAVE_NAME)_u.c $(ENCLAVE_NAME)_u.h
 	$(RM) *.meta *.mrsigner *_mrsigner.h *.sig *.sigdata $(ENCLAVE_SIGNING_PUBLIC_KEY)
-	$(RM) -r mbedtls
+	$(RM) -r $(MBEDTLS)
+
+.PHONY: distclean
+distclean:
+	$(RM) $(MBEDTLS_SRC)
