@@ -496,7 +496,7 @@ int ias_verify_quote(struct ias_context_t* context, const void* quote, size_t qu
             ERROR("Failed to write IAS report to %s: %s\n", report_path, strerror(errno));
             goto out;
         }
-        DBG("IAS report saved to: %s\n", report_path);
+        INFO("IAS report saved to: %s\n", report_path);
     }
 
     if (sig_path) {
@@ -505,7 +505,7 @@ int ias_verify_quote(struct ias_context_t* context, const void* quote, size_t qu
             ERROR("Failed to write IAS signature to %s: %s\n", sig_path, strerror(errno));
             goto out;
         }
-        DBG("IAS report signature saved to: %s\n", sig_path);
+        INFO("IAS report signature saved to: %s\n", sig_path);
     }
 
     if (cert_path) {
@@ -516,7 +516,7 @@ int ias_verify_quote(struct ias_context_t* context, const void* quote, size_t qu
             ERROR("Failed to write IAS certificate to %s: %s\n", cert_path, strerror(errno));
             goto out;
         }
-        DBG("IAS certificate saved to: %s\n", cert_path);
+        INFO("IAS certificate saved to: %s\n", cert_path);
     }
 
     if (advisory_path) {
@@ -543,7 +543,7 @@ int ias_verify_quote(struct ias_context_t* context, const void* quote, size_t qu
                 goto out;
             }
         }
-        DBG("IAS advisory saved to: %s\n", advisory_path);
+        INFO("IAS advisory saved to: %s\n", advisory_path);
     }
 
     /* body_callback and header_callback always add terminating \0, but

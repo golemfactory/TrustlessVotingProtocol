@@ -1,8 +1,17 @@
 #ifndef VE_USER_H
 #define VE_USER_H
 
-/** Enables enclave debugging and NULLIFIES ENCLAVE MEMORY PROTECTION. */
+/*! Enables enclave debugging and NULLIFIES ENCLAVE MEMORY PROTECTION. */
 #define ENCLAVE_DEBUG_ENABLED 1
+
+/*! Default base URL for IAS API endpoints. Remove "/dev" for production environment. */
+#define IAS_URL_BASE "https://api.trustedservices.intel.com/sgx/dev"
+
+/*! Default URL for IAS "verify attestation evidence" API endpoint. */
+#define IAS_URL_REPORT IAS_URL_BASE "/attestation/v3/report"
+
+/*! Default URL for IAS "Retrieve SigRL" API endpoint. EPID group id is added at the end. */
+#define IAS_URL_SIGRL IAS_URL_BASE "/attestation/v3/sigrl"
 
 /*!
  *  \brief Get size of an open file.
@@ -37,6 +46,18 @@ void* read_file(const char* path, void* buffer, size_t* size);
  */
 int write_file(const char* path, const void* buffer, size_t size);
 
+/*!
+ *  \brief Submit enclave quote to IAS and save the response.
+ *
+ *  \param[in] ias_api_key IAS API key (hex string).
+ *  \param[in] nonce       (Optional) Nonce to be included in the IAS report (max 32 characters).
+ *  \param[in] quote_path  Path to the enclave quote.
+ *  \param[in] report_path Path where IAS report will be saved.
+ *
+ *  \return 0 on success, negative on error.
+ */
+int ve_verify_enclave_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
+                            const char* report_path);
 /*!
  *  \brief Initialize voting enclave.
  *         Loads enclave, generates new enclave key pair, seals enclave state, exports enclave
