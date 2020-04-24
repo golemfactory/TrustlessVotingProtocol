@@ -26,8 +26,8 @@ struct option g_options[] = {
 void usage(const char* exec) {
     printf("Usage: %s mode [options]\n", exec);
     printf("Available modes:\n");
-    printf("  init                     Generate enclave's key pair and export the public key,\n");
-    printf("                           generate enclave quote and export it,\n");
+    printf("  init                     Generate enclave's key pair and export the public key\n");
+    printf("  quote                    Generate enclave quote and export it,\n");
     printf("                           verify the quote with IAS and save the report\n");
     printf("  test                     Test loading enclave with sealed state\n");
     printf("Available general options:\n");
@@ -39,6 +39,7 @@ void usage(const char* exec) {
     printf("Available init options:\n");
     printf("  --pubkey-path, -p PATH   Path to save enclave public key to, default: "
            DEFAULT_ENCLAVE_PUBLIC_KEY_PATH "\n");
+    printf("Available quote options:\n");
     printf("  --spid, -i SPID          Service Provider ID received during IAS registration"
            " (hex string)\n");
     printf("  --api-key, -k KEY        IAS API key (hex string)\n");
@@ -113,6 +114,11 @@ int main(int argc, char* argv[]) {
 
     switch (mode[0]) {
         case 'i': { // init
+            ret = ve_generate_keys(enclave_path, enclave_state_path, enclave_public_key_path);
+            break;
+        }
+
+        case 'q': { // quote
             if (!sp_id) {
                 printf("SPID not set\n");
                 usage(argv[0]);
@@ -131,8 +137,11 @@ int main(int argc, char* argv[]) {
                 goto out;
             }
 
-            ret = ve_init_enclave(enclave_path, sp_id, sp_quote_type, enclave_state_path,
-                                  enclave_public_key_path, quote_path);
+            ret = ve_load_enclave(enclave_path, enclave_state_path);
+            if (ret < 0)
+                goto out;
+
+            ret = ve_get_quote(sp_id, sp_quote_type, quote_path);
             if (ret < 0)
                 goto out;
 
@@ -151,11 +160,7 @@ int main(int argc, char* argv[]) {
             assert(nonce[32] == 0);
             printf("IAS nonce: %s\n", nonce);
 
-            ret = ve_verify_enclave_quote(api_key, nonce, quote_path, report_path);
-            if (ret < 0)
-                goto out;
-
-            ret = ve_unload_enclave();
+            ret = ve_verify_quote(api_key, nonce, quote_path, report_path);
             break;
         }
 
@@ -164,9 +169,7 @@ int main(int argc, char* argv[]) {
             if (ret < 0)
                 goto out;
 
-            ve_submit_voting();
-
-            ret = ve_unload_enclave();
+            ret = ve_submit_voting();
             break;
         }
 
@@ -177,6 +180,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    ve_unload_enclave();
 out:
     return ret;
 }

@@ -189,20 +189,19 @@ out:
     return ret;
 }
 
-int ve_init_enclave(const char* enclave_path, const char* sp_id_str, const char* sp_quote_type_str,
-                    const char* sealed_state_path, const char* enclave_pubkey_path,
-                    const char* quote_path) {
+int ve_generate_keys(const char* enclave_path, const char* sealed_state_path,
+                     const char* enclave_pubkey_path) {
+    return load_ve(enclave_path, ENCLAVE_DEBUG_ENABLED, sealed_state_path,
+                   false, // overwrite existing sealed state
+                   enclave_pubkey_path); // export public key
+}
+
+int ve_get_quote(const char* sp_id_str, const char* sp_quote_type_str, const char* quote_path) {
     sgx_spid_t sp_id = { 0 };
     sgx_quote_sign_type_t sp_quote_type;
 
-    int ret = load_ve(enclave_path, ENCLAVE_DEBUG_ENABLED, sealed_state_path,
-                      false, // overwrite existing sealed state
-                      enclave_pubkey_path); // export public key
-    if (ret < 0)
-        goto out;
-
     // parse SPID
-    ret = parse_hex(sp_id_str, &sp_id, sizeof(sp_id));
+    int ret = parse_hex(sp_id_str, &sp_id, sizeof(sp_id));
     if (ret < 0) {
         ERROR("Invalid SPID: %s\n", sp_id_str);
         goto out;
@@ -223,8 +222,8 @@ out:
     return ret;
 }
 
-int ve_verify_enclave_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
-                            const char* report_path) {
+int ve_verify_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
+                    const char* report_path) {
     int ret = -1;
     void* quote_data = NULL;
 
