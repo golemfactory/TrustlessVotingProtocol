@@ -1,9 +1,9 @@
 SGX_SDK ?= /opt/intel/sgxsdk
-MBEDTLS ?= mbedtls
-MBEDTLS_INC ?= $(MBEDTLS)/include
-MBEDTLS_LIB ?= $(MBEDTLS)/library
 SGX_INC ?= $(SGX_SDK)/include
 SGX_LIB ?= $(SGX_SDK)/lib64
+MBEDTLS ?= ../common/mbedtls
+MBEDTLS_INC ?= $(MBEDTLS)/include
+MBEDTLS_LIB ?= $(MBEDTLS)/library
 
 ENCLAVE_NAME ?= voting_enclave
 ENCLAVE_CONFIG ?= $(ENCLAVE_NAME).config.xml
@@ -19,19 +19,12 @@ APP_BIN ?= $(APP_NAME)
 DEFAULT_PREFIX := /usr/local
 PREFIX ?= $(DEFAULT_PREFIX)
 
-MBEDTLS_VERSION ?= 2.22.0
-MBEDTLS_SRC ?= mbedtls-$(MBEDTLS_VERSION).tar.gz
-MBEDTLS_URI ?= https://github.com/ARMmbed/mbedtls/archive/
-MBEDTLS_CHECKSUM ?= 94ac6bdd209248028bd94b20bfac769e7922dda15c40c67a6170b0a58e7982f4
-
 ##############################################################################
 
 ifeq ($(DEBUG), 1)
-	CFLAGS += -O0 -g
-	MBED_BUILD_TYPE = Debug
+	CFLAGS += -O0 -g -DDEBUG
 else
 	CFLAGS += -O2
-	MBED_BUILD_TYPE = Release
 endif
 
 CFLAGS += \
@@ -43,23 +36,11 @@ CFLAGS += \
 	-fPIC \
 	-fstack-protector \
 	-I$(SGX_INC) \
+	-I../common \
 	-std=c11
 
 .PHONY: all
 all: check_key $(ENCLAVE_BINARY_SIGNED) $(LIBRARY_BIN) $(APP_BIN)
-
-$(MBEDTLS_SRC):
-	./download.sh --output $@ --url $(MBEDTLS_URI)/$(MBEDTLS_SRC) --sha256 $(MBEDTLS_CHECKSUM)
-
-$(MBEDTLS): $(MBEDTLS_SRC)
-	tar -mxzf $<
-	mv mbedtls-mbedtls-$(MBEDTLS_VERSION) $@
-	patch -p1 --forward < mbedtls.patch
-
-$(MBEDTLS)/.build_succeeded: mbedtls_config.h $(MBEDTLS)
-	cp $< $(MBEDTLS)/include/mbedtls/config.h
-	cd $(MBEDTLS) && make CFLAGS="-fPIC" lib
-	touch $@
 
 ##############################################################################
 # enclave
@@ -124,10 +105,10 @@ $(MRSIGNER): $(ENCLAVE_SIGNING_PUBLIC_KEY) openssl_parse.awk
 $(MRSIGNER_H): $(MRSIGNER)
 	xxd -i -c 8 $(MRSIGNER) > $@
 
-$(ENCLAVE_BINARY): $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o $(MBEDTLS)/.build_succeeded
+$(ENCLAVE_BINARY): $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o
 	$(CC) $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o $(MBEDTLS_OBJS_ENCLAVE) $(LDFLAGS_ENCLAVE) -o $@
 
-$(ENCLAVE_NAME).o: $(ENCLAVE_NAME).c $(MRSIGNER_H) $(ENCLAVE_NAME)_u.c $(MBEDTLS)/.build_succeeded
+$(ENCLAVE_NAME).o: $(ENCLAVE_NAME).c $(MRSIGNER_H) $(ENCLAVE_NAME)_u.c
 	$(CC) $(CFLAGS_ENCLAVE) -c $< -o $@
 
 $(ENCLAVE_NAME)_t.o: $(ENCLAVE_NAME)_t.c
@@ -148,10 +129,12 @@ CFLAGS_LIB := $(CFLAGS) \
 	-I../include
 
 MBEDTLS_OBJS_LIB := \
+	$(MBEDTLS_LIB)/md.o \
 	$(MBEDTLS_LIB)/sha256.o
 
 LDFLAGS_LIB := -lcrypto \
 	-L$(SGX_LIB) -lsgx_urts -lsgx_uae_service \
+	-L../common -lsgx_util \
 	-shared
 
 $(LIBRARY_BIN): $(LIBRARY_NAME).o $(ENCLAVE_NAME)_u.o
@@ -167,7 +150,7 @@ $(ENCLAVE_NAME)_u.o: $(ENCLAVE_NAME)_u.c
 # application
 
 $(APP_BIN): $(APP_NAME).o $(LIBRARY_BIN)
-	$(CC) $(LDFLAGS) -Wl,-rpath=. $< -o $@ -L. -l$(LIBRARY_NAME)
+	$(CC) $(LDFLAGS) -Wl,-rpath=. -Wl,-rpath=../common $< -o $@ -L. -l$(LIBRARY_NAME) -L../common -lsgx_util
 
 $(APP_NAME).o: $(APP_NAME).c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -176,8 +159,8 @@ $(APP_NAME).o: $(APP_NAME).c
 
 .PHONY: install
 install:
-	install -D $(LIBRARY_BIN) ${PREFIX}/lib
-	install -D $(APP_BIN) ${PREFIX}/bin
+	install -D $(LIBRARY_BIN) -t ${PREFIX}/lib
+	install -D $(APP_BIN) -t ${PREFIX}/bin
 
 ifeq ($(PREFIX), $(DEFAULT_PREFIX))
 	ldconfig
@@ -186,14 +169,11 @@ else
 endif
 
 ##############################################################################
+.PHONY: distclean
+distclean: clean
 
 .PHONY: clean
 clean:
 	$(RM) *.o *.so $(APP_BIN)
 	$(RM) $(ENCLAVE_NAME)_t.c $(ENCLAVE_NAME)_t.h $(ENCLAVE_NAME)_u.c $(ENCLAVE_NAME)_u.h
 	$(RM) *.meta *.mrsigner *_mrsigner.h *.sig *.sigdata $(ENCLAVE_SIGNING_PUBLIC_KEY)
-	$(RM) -r $(MBEDTLS)
-
-.PHONY: distclean
-distclean:
-	$(RM) $(MBEDTLS_SRC)

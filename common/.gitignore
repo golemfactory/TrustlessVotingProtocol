@@ -1,0 +1,5 @@
+/cJSON*
+/mbedtls
+/*.gz
+/*.o
+/*.so

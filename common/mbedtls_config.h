@@ -6,6 +6,7 @@
 #define MBEDTLS_AESNI_C
 #define MBEDTLS_ASN1_PARSE_C
 #define MBEDTLS_ASN1_WRITE_C
+#define MBEDTLS_BASE64_C
 #define MBEDTLS_BIGNUM_C
 #define MBEDTLS_CTR_DRBG_C
 #define MBEDTLS_ECDH_C
@@ -15,15 +16,19 @@
 #define MBEDTLS_ENTROPY_C
 #define MBEDTLS_HAVE_ASM
 #define MBEDTLS_HAVE_X86_64
+#define MBEDTLS_MD_C
 #define MBEDTLS_NO_PLATFORM_ENTROPY
+#define MBEDTLS_OID_C
+#define MBEDTLS_PK_C
+#define MBEDTLS_PK_PARSE_C
 #define MBEDTLS_PLATFORM_C
 #define MBEDTLS_PLATFORM_NO_STD_FUNCTIONS
 #define MBEDTLS_SHA256_C
 
 #include <limits.h>
-#include <stddef.h>
 #include <stdlib.h>
 
 #define MBEDTLS_ENTROPY_HARDWARE_ALT
+#define MBEDTLS_PLATFORM_STD_SNPRINTF snprintf
 
 #endif
