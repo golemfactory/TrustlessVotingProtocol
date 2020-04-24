@@ -109,9 +109,10 @@ endif
 
 .PHONY: clean
 clean:
-	$(RM) *.gz *.o *.so
+	$(RM) *.o *.so
 
 .PHONY: distclean
 distclean: clean
+	$(RM) *.gz
 	$(RM) -r cJSON-$(CJSON_VERSION) cJSON.c cJSON.h
 	$(RM) -r $(MBEDTLS)

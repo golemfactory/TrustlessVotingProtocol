@@ -47,6 +47,32 @@ void* read_file(const char* path, void* buffer, size_t* size);
 int write_file(const char* path, const void* buffer, size_t size);
 
 /*!
+ *  \brief Loads the enclave, generates new enclave key pair, seals enclave state, exports enclave
+ *         public key.
+ *
+ *  \param[in] enclave_path        Path to enclave binary.
+ *  \param[in] sealed_state_path   Path to sealed enclave state (will be overwritten).
+ *  \param[in] enclave_pubkey_path Path where enclave public key will be saved.
+ *
+ *  \return 0 on success, negative on error.
+ */
+int ve_generate_keys(const char* enclave_path, const char* sealed_state_path,
+                     const char* enclave_pubkey_path);
+
+/*!
+ *  \brief Get SGX quote of the enclave.
+ *
+ *  \param[in] sp_id_str         Service Provider ID (hex string).
+ *  \param[in] sp_quote_type_str Quote type as string ("linkable"/"unlinkable").
+ *  \param[in] quote_path        Path where enclave SGX quote will be saved.
+ *
+ *  \return 0 on success, negative on error.
+ *
+ *  \details The enclave must be loaded.
+ */
+int ve_get_quote(const char* sp_id_str, const char* sp_quote_type_str, const char* quote_path);
+
+/*!
  *  \brief Submit enclave quote to IAS and save the response.
  *
  *  \param[in] ias_api_key IAS API key (hex string).
@@ -56,25 +82,8 @@ int write_file(const char* path, const void* buffer, size_t size);
  *
  *  \return 0 on success, negative on error.
  */
-int ve_verify_enclave_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
-                            const char* report_path);
-/*!
- *  \brief Initialize voting enclave.
- *         Loads enclave, generates new enclave key pair, seals enclave state, exports enclave
- *         quote and public key.
- *
- *  \param[in] enclave_path        Path to enclave binary.
- *  \param[in] sp_id_str           Service Provider ID (hex string).
- *  \param[in] sp_quote_type_str   Quote type as string ("linkable"/"unlinkable").
- *  \param[in] sealed_state_path   Path to sealed enclave state (will be overwritten).
- *  \param[in] enclave_pubkey_path Path where enclave public key will be saved.
- *  \param[in] quote_path          Path where enclave SGX quote will be saved.
- *
- *  \return 0 on success, negative on error.
- */
-int ve_init_enclave(const char* enclave_path, const char* sp_id_str, const char* sp_quote_type_str,
-                    const char* sealed_state_path, const char* enclave_pubkey_path,
-                    const char* quote_path);
+int ve_verify_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
+                    const char* report_path);
 
 /*!
  *  \brief Load voting enclave and restore its state from a sealed blob.
