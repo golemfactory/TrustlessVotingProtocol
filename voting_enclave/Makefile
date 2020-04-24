@@ -36,7 +36,9 @@ CFLAGS += \
 	-fPIC \
 	-fstack-protector \
 	-I$(SGX_INC) \
+	-I$(MBEDTLS_INC) \
 	-I../common \
+	-I../include \
 	-std=c11
 
 .PHONY: all
@@ -47,9 +49,7 @@ all: check_key $(ENCLAVE_BINARY_SIGNED) $(LIBRARY_BIN) $(APP_BIN)
 
 CFLAGS_ENCLAVE := $(CFLAGS) \
 	-nostdinc \
-	-I$(SGX_INC)/tlibc \
-	-I$(MBEDTLS_INC) \
-	-I../include
+	-I$(SGX_INC)/tlibc
 
 LDFLAGS_ENCLAVE := -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles \
 	-L$(SGX_LIB) \
@@ -124,9 +124,7 @@ $(ENCLAVE_NAME)_u.c: $(ENCLAVE_NAME).edl
 ##############################################################################
 # untrusted library
 
-CFLAGS_LIB := $(CFLAGS) \
-	-I$(MBEDTLS_INC) \
-	-I../include
+CFLAGS_LIB := $(CFLAGS)
 
 MBEDTLS_OBJS_LIB := \
 	$(MBEDTLS_LIB)/md.o \
@@ -149,8 +147,12 @@ $(ENCLAVE_NAME)_u.o: $(ENCLAVE_NAME)_u.c
 ##############################################################################
 # application
 
+MBEDTLS_OBJS_APP := \
+	$(MBEDTLS_LIB)/base64.o
+
 $(APP_BIN): $(APP_NAME).o $(LIBRARY_BIN)
-	$(CC) $(LDFLAGS) -Wl,-rpath=. -Wl,-rpath=../common $< -o $@ -L. -l$(LIBRARY_NAME) -L../common -lsgx_util
+	$(CC) $(LDFLAGS) -Wl,-rpath=. -Wl,-rpath=../common $< $(MBEDTLS_OBJS_APP) \
+	-o $@ -L. -l$(LIBRARY_NAME) -L../common -lsgx_util
 
 $(APP_NAME).o: $(APP_NAME).c
 	$(CC) $(CFLAGS) -c $< -o $@

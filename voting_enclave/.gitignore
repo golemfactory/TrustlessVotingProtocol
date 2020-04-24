@@ -19,4 +19,5 @@
 
 /ve_pubkey
 *.quote
+*.report
 *.state

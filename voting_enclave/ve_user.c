@@ -2,6 +2,7 @@
 
 #include <mbedtls/sha256.h>
 
+#include "ias.h"
 #include "tvp_msg.h"
 #include "util.h"
 #include "ve_user.h"
@@ -219,6 +220,39 @@ int ve_init_enclave(const char* enclave_path, const char* sp_id_str, const char*
 
     ret = generate_enclave_quote(sp_id, sp_quote_type, quote_path);
 out:
+    return ret;
+}
+
+int ve_verify_enclave_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
+                            const char* report_path) {
+    int ret = -1;
+    void* quote_data = NULL;
+
+    if (!ias_api_key || !quote_path || !report_path)
+        goto out;
+
+    struct ias_context_t* ias = ias_init(ias_api_key, IAS_URL_REPORT, IAS_URL_SIGRL);
+    size_t quote_size = 0;
+    quote_data = read_file(quote_path, NULL, &quote_size);
+    if (!quote_data)
+        goto out;
+
+    if (quote_size < sizeof(sgx_quote_t)) {
+        ERROR("Quote is too small\n");
+        goto out;
+    }
+
+    sgx_quote_t* quote = (sgx_quote_t*)quote_data;
+    if (quote_size < sizeof(sgx_quote_t) + quote->signature_len) {
+        ERROR("Quote is too small\n");
+        goto out;
+    }
+    quote_size = sizeof(sgx_quote_t) + quote->signature_len;
+
+    ret = ias_verify_quote(ias, quote_data, quote_size, nonce, report_path, NULL, NULL, NULL);
+
+out:
+    free(quote_data);
     return ret;
 }
 
