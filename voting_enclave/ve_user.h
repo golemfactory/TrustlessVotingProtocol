@@ -1,6 +1,8 @@
 #ifndef VE_USER_H
 #define VE_USER_H
 
+#include "tvp_msg.h"
+
 /*! Enables enclave debugging and NULLIFIES ENCLAVE MEMORY PROTECTION. */
 #define ENCLAVE_DEBUG_ENABLED 1
 
@@ -102,6 +104,6 @@ int ve_load_enclave(const char* enclave_path, const char* sealed_state_path);
  */
 int ve_unload_enclave(void);
 
-int ve_submit_voting(void);
+int ve_submit_voting(tvp_msg_register_voting_eh_ve_t* voting_description);
 
 #endif /* VE_USER_H */

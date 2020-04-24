@@ -6,6 +6,7 @@ import struct
 
 k = input("Input pubkey: ")
 k = bytes.fromhex(k)
+assert len(k) == 65
 n = input("Input nonce: ")
 n = bytes.fromhex(n)
 sig = input("Input sig: ")
@@ -18,9 +19,9 @@ h.update(b'\x00'*32) # end_time
 h.update(struct.pack("<I", 4)) # num_options
 h.update(struct.pack("<I", 2)) # num_voters
 
-h.update(b'a' + b'\x00'*64) # voter0 key
+h.update(k) # voter0 key
 h.update(struct.pack("<I", 3)) # voter0 weight
-h.update(b'b' + b'\x00'*64) # voter1 key
+h.update(k) # voter1 key
 h.update(struct.pack("<I", 4)) # voter1 weight
 
 h.update(struct.pack("<Q", 4)) # description_size

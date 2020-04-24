@@ -270,26 +270,12 @@ int ve_unload_enclave(void) {
     return ret;
 }
 
-int ve_submit_voting(void) {
-    /* Just a testing data.
-     * TODO: receive it from outside. */
-    tvp_voter_t voters[2] = {
-        { "a", 3},
-        { "b", 4},
-    };
-    tvp_msg_register_voting_eh_ve_t voting_description = {
-        .num_options = 4,
-        .num_voters = 2,
-        .voters = voters,
-        .description_size = 4,
-        .description = "abcd",
-    };
-
+int ve_submit_voting(tvp_msg_register_voting_eh_ve_t* voting_description) {
     tvp_msg_register_voting_ve_eh_t vdve = { 0 };
 
     int ret = 0;
     sgx_status_t sgx_ret = e_register_voting(g_enclave_id, &ret,
-                                (uint8_t*)&voting_description, sizeof(voting_description),
+                                (uint8_t*)voting_description, sizeof(*voting_description),
                                 (uint8_t*)&vdve, sizeof(vdve));
     if (sgx_ret != SGX_SUCCESS || ret < 0) {
         ERROR("Voting registration failed: %d\n", ret);
