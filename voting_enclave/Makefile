@@ -127,7 +127,6 @@ $(ENCLAVE_NAME)_u.c: $(ENCLAVE_NAME).edl
 CFLAGS_LIB := $(CFLAGS)
 
 MBEDTLS_OBJS_LIB := \
-	$(MBEDTLS_LIB)/md.o \
 	$(MBEDTLS_LIB)/sha256.o
 
 LDFLAGS_LIB := -lcrypto \
