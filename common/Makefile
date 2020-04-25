@@ -29,7 +29,7 @@ else
 	MBED_BUILD_TYPE = Release
 endif
 
-LDFLAGS += -L$(MBEDTLS_LIB)
+LDFLAGS += -L$(MBEDTLS_LIB) -L$(SGX_LIB)
 
 DEFAULT_PREFIX := /usr/local
 PREFIX ?= $(DEFAULT_PREFIX)
@@ -86,6 +86,7 @@ MBEDTLS_OBJS := \
 	$(MBEDTLS_LIB)/ecp.o \
 	$(MBEDTLS_LIB)/ecp_curves.o \
 	$(MBEDTLS_LIB)/entropy.o \
+	$(MBEDTLS_LIB)/md.o \
 	$(MBEDTLS_LIB)/oid.o \
 	$(MBEDTLS_LIB)/pk.o \
 	$(MBEDTLS_LIB)/pkparse.o \
@@ -93,7 +94,8 @@ MBEDTLS_OBJS := \
 	$(MBEDTLS_LIB)/sha256.o
 
 $(LIBRARY_BIN): attestation.o cJSON.o ias.o util.o $(MBEDTLS)/.build_succeeded
-	$(CC) attestation.o cJSON.o ias.o util.o $(MBEDTLS_OBJS) -lcurl -shared -o $@
+	$(CC) attestation.o cJSON.o ias.o util.o $(MBEDTLS_OBJS) \
+		-lcurl -lsgx_urts -lsgx_uae_service -shared -o $@
 
 ##############################################################################
 
