@@ -13,7 +13,7 @@ CFLAGS += \
 	-I../common \
 	-std=c11
 
-LDFLAGS += -L../common -lsgx_util
+LDFLAGS += -Wl,-rpath=. -L../common -lsgx_util
 APP_BIN ?= quote_dump
 PREFIX ?= /usr/local
 
@@ -25,7 +25,11 @@ $(APP_BIN): $(APP_BIN).o
 
 .PHONY: install
 install:
-	install -D $(APP_BIN) -t ${PREFIX}/bin
+ifeq ($(PREFIX), $(DEFAULT_PREFIX))
+	install -D $(APP_BIN) -t $(PREFIX)/bin
+else
+	install -D $(APP_BIN) -t $(PREFIX)
+endif
 
 .PHONY: clean
 clean:

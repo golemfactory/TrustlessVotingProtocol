@@ -112,12 +112,13 @@ crypto_utils.o: %.o: %.c
 
 .PHONY: install
 install:
-	install -D $(LIBRARY_BIN) -t ${PREFIX}/lib
 
 ifeq ($(PREFIX), $(DEFAULT_PREFIX))
+	install -D $(LIBRARY_BIN) -t $(PREFIX)/lib
 	ldconfig
 else
-	ldconfig -n ${PREFIX}/lib
+	install -D $(LIBRARY_BIN) -t $(PREFIX)
+	ldconfig -n $(PREFIX)
 endif
 
 .PHONY: clean

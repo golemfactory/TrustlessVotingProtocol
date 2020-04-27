@@ -172,13 +172,16 @@ $(APP_NAME).o: $(APP_NAME).c
 
 .PHONY: install
 install:
-	install -D $(LIBRARY_BIN) -t ${PREFIX}/lib
-	install -D $(APP_BIN) -t ${PREFIX}/bin
-
 ifeq ($(PREFIX), $(DEFAULT_PREFIX))
+	install -D $(LIBRARY_BIN) -t $(PREFIX)/lib
+	install -D $(ENCLAVE_BINARY_SIGNED) -t $(PREFIX)/bin
+	install -D $(APP_BIN) -t $(PREFIX)/bin
 	ldconfig
 else
-	ldconfig -n ${PREFIX}/lib
+	install -D $(LIBRARY_BIN) -t $(PREFIX)
+	install -D $(ENCLAVE_BINARY_SIGNED) -t $(PREFIX)
+	install -D $(APP_BIN) -t $(PREFIX)
+	ldconfig -n $(PREFIX)
 endif
 
 ##############################################################################
