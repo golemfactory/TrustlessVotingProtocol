@@ -75,6 +75,7 @@ MBEDTLS_OBJS_ENCLAVE := \
 	$(MBEDTLS_LIB)/cipher.o \
 	$(MBEDTLS_LIB)/cipher_wrap.o \
 	$(MBEDTLS_LIB)/ctr_drbg.o \
+	$(MBEDTLS_LIB)/ecdh.o \
 	$(MBEDTLS_LIB)/ecdsa.o \
 	$(MBEDTLS_LIB)/ecp.o \
 	$(MBEDTLS_LIB)/ecp_curves.o \

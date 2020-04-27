@@ -25,4 +25,8 @@
  * TODO: change it to Curve25519 once MbedTLS implements EdDSA. */
 #define EC_CURVE_ID MBEDTLS_ECP_DP_SECP256R1
 
+#define IV_LEN 16
+#define SALT_LEN IV_LEN
+#define SIZE_WITH_PAD(x) ((x) / 16 * 16 + 16)
+
 #endif

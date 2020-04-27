@@ -106,4 +106,6 @@ int ve_unload_enclave(void);
 
 int ve_submit_voting(tvp_msg_register_voting_eh_ve_t* voting_description);
 
+int ve_submit_vote(uint8_t* enc_vote, size_t enc_vote_size);
+
 #endif /* VE_USER_H */

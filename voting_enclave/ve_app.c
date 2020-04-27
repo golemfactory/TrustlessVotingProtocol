@@ -117,12 +117,14 @@ static int submit_voting(void) {
 
     for (size_t i = 0; i < vd->num_voters; ++i) {
         printf("Enter public key (hex) of voter number %zu:\n", i);
-        char buf[0x100];
-        if (!fgets(buf, sizeof buf, stdin) || strlen(buf) != sizeof(voters[i].public_key) * 2 + 1) {
+        char buf[0x100] = { 0 };
+        if (!fgets(buf, sizeof buf, stdin) || (len = strlen(buf)) != sizeof(voters[i].public_key) * 2 + 1) {
             fprintf(stderr, "Reading public key of voter number %zu failed\n", i);
             goto out;
         }
-        buf[strlen(buf) - 1] = '\0';
+        if (len && buf[len - 1] == '\n') {
+            buf[len - 1] = '\0';
+        }
         if (parse_hex(buf, &voters[i].public_key, sizeof(voters[i].public_key)) < 0) {
             goto out;
         }
@@ -177,7 +179,38 @@ static int end_voting(void) {
 }
 
 static int submit_vote(void) {
-    return -1;
+    int ret = -1;
+    char buf[0x400] = { 0 };
+    size_t len = 0;
+
+    puts("Enter encrypted vote:");
+    if (!fgets(buf, sizeof buf, stdin)) {
+        puts("Reading encrypted vote failed!");
+        goto out;
+    }
+    len = strlen(buf);
+    if (len && buf[len - 1] == '\n') {
+        buf[len - 1] = '\0';
+        --len;
+    }
+    if (len % 2 != 0) {
+        puts("Invalid encrypted vote length!");
+        goto out;
+    }
+
+    uint8_t* enc_vote = malloc(len / 2);
+    if (!enc_vote) {
+        puts("Out of memory!\n");
+        goto out;
+    }
+    if (parse_hex(buf, enc_vote, len / 2) < 0) {
+        goto out;
+    }
+
+    ret = ve_submit_vote(enc_vote, len / 2);
+
+out:
+    return ret;
 }
 
 int main(int argc, char* argv[]) {

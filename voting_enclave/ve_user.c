@@ -290,6 +290,32 @@ int ve_submit_voting(tvp_msg_register_voting_eh_ve_t* voting_description) {
     return 0;
 }
 
+int ve_submit_vote(uint8_t* enc_vote, size_t enc_vote_size) {
+    int ret = -1;
+
+    size_t ret_buf_size = IV_LEN + SIZE_WITH_PAD(sizeof(tvp_msg_vote_ve_v_t));
+    uint8_t* ret_buf = malloc(ret_buf_size);
+    if (!ret_buf) {
+        ERROR("Out of memory!\n");
+        goto out;
+    }
+
+    sgx_status_t sgx_ret = e_register_vote(g_enclave_id, &ret, enc_vote, enc_vote_size, ret_buf,
+                                           ret_buf_size);
+    if (sgx_ret != SGX_SUCCESS || ret < 0) {
+        ERROR("Adding the vote failed: %d\n", ret);
+        goto out;
+    }
+
+    INFO("Encrypted VVR: ");
+    hexdump_mem(ret_buf, ret_buf_size);
+
+    ret = 0;
+out:
+    free(ret_buf);
+    return ret;
+}
+
 // OCALL: save sealed enclave state
 int o_store_sealed_data(const uint8_t* sealed_data, size_t sealed_size) {
     INFO("Saving sealed enclave state to '%s'\n", g_sealed_state_path);

@@ -19,6 +19,12 @@ enclave {
             size_t vd_size,
             [out, size=vdve_size] uint8_t* vdve,
             size_t vdve_size);
+
+        public int e_register_vote(
+            [in, size=enc_vote_size] uint8_t* enc_vote,
+            size_t enc_vote_size,
+            [out, size=ret_buf_size] uint8_t* ret_buf,
+            size_t ret_buf_size);
     };
 
     untrusted {
