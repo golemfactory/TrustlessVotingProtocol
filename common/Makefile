@@ -19,6 +19,7 @@ CFLAGS += \
 	-fstack-protector \
 	-I$(SGX_INC) \
 	-I$(MBEDTLS_INC) \
+	-I../include \
 	-std=c11
 
 ifeq ($(DEBUG), 1)
@@ -34,8 +35,10 @@ LDFLAGS += -L$(MBEDTLS_LIB) -L$(SGX_LIB)
 DEFAULT_PREFIX := /usr/local
 PREFIX ?= $(DEFAULT_PREFIX)
 
+COMMON_OBJS := crypto_utils.o
+
 .PHONY: all
-all: $(LIBRARY_BIN)
+all: $(LIBRARY_BIN) $(COMMON_OBJS)
 
 ##############################################################################
 
@@ -81,6 +84,8 @@ MBEDTLS_OBJS := \
 	$(MBEDTLS_LIB)/asn1write.o \
 	$(MBEDTLS_LIB)/base64.o \
 	$(MBEDTLS_LIB)/bignum.o \
+	$(MBEDTLS_LIB)/cipher.o \
+	$(MBEDTLS_LIB)/cipher_wrap.o \
 	$(MBEDTLS_LIB)/ctr_drbg.o \
 	$(MBEDTLS_LIB)/ecdsa.o \
 	$(MBEDTLS_LIB)/ecp.o \
@@ -89,6 +94,7 @@ MBEDTLS_OBJS := \
 	$(MBEDTLS_LIB)/md.o \
 	$(MBEDTLS_LIB)/oid.o \
 	$(MBEDTLS_LIB)/pk.o \
+	$(MBEDTLS_LIB)/pkcs5.o \
 	$(MBEDTLS_LIB)/pkparse.o \
 	$(MBEDTLS_LIB)/pk_wrap.o \
 	$(MBEDTLS_LIB)/sha256.o
@@ -96,6 +102,11 @@ MBEDTLS_OBJS := \
 $(LIBRARY_BIN): attestation.o cJSON.o ias.o util.o $(MBEDTLS)/.build_succeeded
 	$(CC) attestation.o cJSON.o ias.o util.o $(MBEDTLS_OBJS) \
 		-lcurl -lsgx_urts -lsgx_uae_service -shared -o $@
+
+##############################################################################
+
+crypto_utils.o: %.o: %.c
+	$(CC) $(CFLAGS) -c $^ -o $@
 
 ##############################################################################
 

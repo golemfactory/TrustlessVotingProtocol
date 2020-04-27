@@ -1,7 +1,8 @@
 SGX_SDK ?= /opt/intel/sgxsdk
 SGX_INC ?= $(SGX_SDK)/include
 SGX_LIB ?= $(SGX_SDK)/lib64
-MBEDTLS ?= ../common/mbedtls
+COMMON_PATH ?=../common
+MBEDTLS ?= $(COMMON_PATH)/mbedtls
 MBEDTLS_INC ?= $(MBEDTLS)/include
 MBEDTLS_LIB ?= $(MBEDTLS)/library
 
@@ -37,7 +38,7 @@ CFLAGS += \
 	-fstack-protector \
 	-I$(SGX_INC) \
 	-I$(MBEDTLS_INC) \
-	-I../common \
+	-I$(COMMON_PATH) \
 	-I../include \
 	-std=c11
 
@@ -71,12 +72,23 @@ MBEDTLS_OBJS_ENCLAVE := \
 	$(MBEDTLS_LIB)/asn1parse.o \
 	$(MBEDTLS_LIB)/asn1write.o \
 	$(MBEDTLS_LIB)/bignum.o \
+	$(MBEDTLS_LIB)/cipher.o \
+	$(MBEDTLS_LIB)/cipher_wrap.o \
 	$(MBEDTLS_LIB)/ctr_drbg.o \
 	$(MBEDTLS_LIB)/ecdsa.o \
 	$(MBEDTLS_LIB)/ecp.o \
 	$(MBEDTLS_LIB)/ecp_curves.o \
 	$(MBEDTLS_LIB)/entropy.o \
+	$(MBEDTLS_LIB)/md.o \
+	$(MBEDTLS_LIB)/oid.o \
+	$(MBEDTLS_LIB)/pkcs5.o \
 	$(MBEDTLS_LIB)/sha256.o
+
+ENCLAVE_COMMONS := \
+	$(COMMON_PATH)/crypto_utils.o
+
+$(ENCLAVE_COMMONS):
+	$(MAKE) -C $(COMMON_PATH) all
 
 .PHONY: check_key
 check_key:
@@ -105,8 +117,8 @@ $(MRSIGNER): $(ENCLAVE_SIGNING_PUBLIC_KEY) openssl_parse.awk
 $(MRSIGNER_H): $(MRSIGNER)
 	xxd -i -c 8 $(MRSIGNER) > $@
 
-$(ENCLAVE_BINARY): $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o
-	$(CC) $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o $(MBEDTLS_OBJS_ENCLAVE) $(LDFLAGS_ENCLAVE) -o $@
+$(ENCLAVE_BINARY): $(ENCLAVE_NAME)_t.o $(ENCLAVE_NAME).o $(ENCLAVE_COMMONS)
+	$(CC) $^ $(MBEDTLS_OBJS_ENCLAVE) $(LDFLAGS_ENCLAVE) -o $@
 
 $(ENCLAVE_NAME).o: $(ENCLAVE_NAME).c $(MRSIGNER_H) $(ENCLAVE_NAME)_u.c
 	$(CC) $(CFLAGS_ENCLAVE) -c $< -o $@
@@ -131,7 +143,7 @@ MBEDTLS_OBJS_LIB := \
 
 LDFLAGS_LIB := -lcrypto \
 	-L$(SGX_LIB) -lsgx_urts -lsgx_uae_service \
-	-L../common -lsgx_util \
+	-L$(COMMON_PATH) -lsgx_util \
 	-shared
 
 $(LIBRARY_BIN): $(LIBRARY_NAME).o $(ENCLAVE_NAME)_u.o
@@ -150,8 +162,8 @@ MBEDTLS_OBJS_APP := \
 	$(MBEDTLS_LIB)/base64.o
 
 $(APP_BIN): $(APP_NAME).o $(LIBRARY_BIN)
-	$(CC) $(LDFLAGS) -Wl,-rpath=. -Wl,-rpath=../common $< $(MBEDTLS_OBJS_APP) \
-	-o $@ -L. -l$(LIBRARY_NAME) -L../common -lsgx_util
+	$(CC) $(LDFLAGS) -Wl,-rpath=. -Wl,-rpath=$(COMMON_PATH) $< $(MBEDTLS_OBJS_APP) \
+	-o $@ -L. -l$(LIBRARY_NAME) -L$(COMMON_PATH) -lsgx_util
 
 $(APP_NAME).o: $(APP_NAME).c
 	$(CC) $(CFLAGS) -c $< -o $@

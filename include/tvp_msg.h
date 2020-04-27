@@ -122,7 +122,7 @@ handshake: V<->VE  {ECDH}
 vote:
 V->VE   VV:{vote:{voter_id, VID, option}, sig(V, hash(vote))}
         VE creates RV:{vote, nonce}, checks voter_list, saves RV
-VE->V   VVR:{RV, sig(VE, hash(RV) | VID)}
+VE->V   VVR:{RV, sig(VE, hash(hash(RV) | VID))}
 */
 typedef struct {
     public_key_t    voter;
@@ -142,14 +142,14 @@ typedef struct { // [RV]
 
 typedef struct { // VE -> V [VVR]
     tvp_registered_vote_t rv;
-    signature_t           sig; // sig(VE, hash(RV) | vote.vid)
+    signature_t           sig; // sig(VE, hash(hash(RV) | vote.vid))
 } tvp_msg_vote_ve_v_t;
 
 /*
 stop voting:
 EH->VE  {VID}
-VE->EH  VRVE:{VID, results[option, count], votes[hash(RV)], sig(VE, VRVE)}
-EH->V   VREH:{VRVE, sig(EH, VREH)}
+VE->EH  VRVE:{VID, results[option, count], votes[hash(RV)], sig(VE, hash(VRVE - sig))}
+EH->V   VREH:{VRVE, sig(EH, hash(VREH))}
 V->EH   {VID} request for VREH
 */
 typedef struct { // EH -> VE
@@ -162,7 +162,7 @@ typedef struct { // VE -> EH [VRVE]
     uint32_t*       results;     // [!] pointer to untrusted memory, weighted option counts
     size_t          num_votes;
     hash_t*         votes;       // [!] pointer to untrusted memory, hash(tvp_registered_vote_t)
-    signature_t     ve_sig;      // sig(VE, previous fields)
+    signature_t     ve_sig;      // sig(VE, hash(previous fields))
 } tvp_msg_stop_voting_ve_eh_t;
 
 typedef struct { // EH -> V [VREH]

@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include <mbedtls/ctr_drbg.h>
-#include <mbedtls/ecdsa.h>
 #include <mbedtls/ecp.h>
 #include <mbedtls/entropy.h>
 
@@ -14,6 +13,7 @@
 #include <sgx_trts.h>
 #include <sgx_utils.h>
 
+#include "crypto_utils.h"
 #include "tvp_msg.h"
 
 #include "voting_enclave.h"
@@ -426,109 +426,6 @@ out_err:
     return -1;
 }
 
-static int hash_update_voter(mbedtls_sha256_context* sha, const tvp_voter_t* voter) {
-    if (mbedtls_sha256_update_ret(sha, voter->public_key, sizeof(voter->public_key))) {
-        return -1;
-    }
-    if (mbedtls_sha256_update_ret(sha, (unsigned char*)&voter->weight, sizeof(voter->weight))) {
-        return -1;
-    }
-    return 0;
-}
-
-// TODO: move to utils
-static int hash_voting(tvp_voting_id_t* vid, const uint8_t* nonce, size_t nonce_len,
-                       const tvp_msg_register_voting_eh_ve_t* vd) {
-    static_assert(sizeof(vid->vid) == 32, "Invalid hash size!\n");
-    int ret;
-    mbedtls_sha256_context sha = { 0 };
-
-    mbedtls_sha256_init(&sha);
-
-    ret = mbedtls_sha256_starts_ret(&sha, /*is224=*/0);
-    if (ret) {
-        goto out;
-    }
-
-    ret = mbedtls_sha256_update_ret(&sha, nonce, nonce_len);
-    if (ret) {
-        goto out;
-    }
-
-#define ADD_FIELD_TO_SHA(f) do {                                                        \
-        ret = mbedtls_sha256_update_ret(&sha, (unsigned char*)&vd->f, sizeof(vd->f));   \
-        if (ret) {                                                                      \
-            goto out;                                                                   \
-        }                                                                               \
-    } while (0)
-
-    ADD_FIELD_TO_SHA(start_time);
-    ADD_FIELD_TO_SHA(end_time);
-    ADD_FIELD_TO_SHA(num_options);
-    ADD_FIELD_TO_SHA(num_voters);
-    for (size_t i = 0; i < vd->num_voters; ++i) {
-        ret = hash_update_voter(&sha, &vd->voters[i]);
-        if (ret) {
-            goto out;
-        }
-    }
-    ADD_FIELD_TO_SHA(description_size);
-    ret = mbedtls_sha256_update_ret(&sha, (unsigned char*)vd->description, vd->description_size);
-    if (ret) {
-        goto out;
-    }
-#undef ADD_FIELD_TO_SHA
-
-    ret = mbedtls_sha256_finish_ret(&sha, vid->vid);
-    if (ret) {
-        goto out;
-    }
-
-    ret = 0;
-out:
-    mbedtls_sha256_free(&sha);
-    return ret;
-}
-
-// TODO: move to utils
-static int generate_nonce(nonce_t* nonce) {
-    return mbedtls_ctr_drbg_random(&g_rng, (unsigned char*)nonce, sizeof(*nonce));
-}
-
-// TODO: move to utils
-static int sign_hash(uint8_t* sig, size_t slen, const uint8_t* hash, size_t hlen, mbedtls_ecp_keypair* key) {
-    int ret = -1;
-    mbedtls_mpi r;
-    mbedtls_mpi s;
-    mbedtls_mpi_init(&r);
-    mbedtls_mpi_init(&s);
-
-    ret = mbedtls_ecdsa_sign(&key->grp, &r, &s, &key->d, hash, hlen,
-                             mbedtls_ctr_drbg_random, &g_rng);
-    if (ret) {
-        goto out;
-    }
-
-    if (mbedtls_mpi_size(&r) != slen / 2 || mbedtls_mpi_size(&s) != slen / 2) {
-        goto out;
-    }
-
-    ret = mbedtls_mpi_write_binary(&r, sig, slen / 2);
-    if (ret) {
-        goto out;
-    }
-    ret = mbedtls_mpi_write_binary(&s, sig + slen / 2, slen / 2);
-    if (ret) {
-        goto out;
-    }
-
-    ret = 0;
-out:
-    mbedtls_mpi_free(&r);
-    mbedtls_mpi_free(&s);
-    return ret;
-}
-
 /* ECALL: register new voting */
 int e_register_voting(uint8_t* voting_description, size_t vd_size,
                       uint8_t* vdve_buf, size_t vdve_size) {
@@ -571,7 +468,7 @@ int e_register_voting(uint8_t* voting_description, size_t vd_size,
     vd->description = description;
 
     nonce_t nonce = { 0 };
-    if (generate_nonce(&nonce)) {
+    if (generate_nonce(&nonce, &g_rng)) {
         eprintf("Failed to generate a nonce!\n");
         goto out;
     }
@@ -590,7 +487,7 @@ int e_register_voting(uint8_t* voting_description, size_t vd_size,
 
     signature_t sig = { 0 };
     if (sign_hash((uint8_t*)&sig, sizeof(sig), (uint8_t*)&g_voting.vid, sizeof(g_voting.vid),
-                  &g_signing_key)) {
+                  &g_signing_key, &g_rng)) {
         eprintf("Failed to sign voting hash!\n");
         goto out;
     }
