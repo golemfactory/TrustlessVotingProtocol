@@ -7,8 +7,8 @@
 
 #include <mbedtls/base64.h>
 
+#include "eh_app.h"
 #include "util.h"
-#include "ve_app.h"
 #include "ve_user.h"
 
 static struct option g_options[] = {

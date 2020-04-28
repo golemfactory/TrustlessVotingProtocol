@@ -1,5 +1,5 @@
-#ifndef VE_CONFIG_H
-#define VE_CONFIG_H
+#ifndef EH_APP_H
+#define EH_APP_H
 
 /*! Default file name to save sealed keys to. */
 #define DEFAULT_ENCLAVE_STATE_PATH "ve.state"
@@ -19,4 +19,4 @@
 /*! Enables enclave debugging and NULLIFIES ENCLAVE MEMORY PROTECTION. */
 #define ENCLAVE_DEBUG_ENABLED 1
 
-#endif /* VE_CONFIG_H */
+#endif /* EH_APP_H */
