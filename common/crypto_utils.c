@@ -7,6 +7,48 @@
 
 #include "crypto_utils.h"
 
+static int export_public_key(mbedtls_ecp_keypair* key_pair, uint8_t* public_key,
+                             size_t public_key_size) {
+    int ret = MBEDTLS_ERR_ECP_BAD_INPUT_DATA;
+    if (!key_pair)
+        goto out;
+
+    size_t pubkey_size;
+    ret = mbedtls_ecp_point_write_binary(&key_pair->grp, &key_pair->Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
+                                         &pubkey_size, NULL, 0);
+    if (ret != MBEDTLS_ERR_ECP_BUFFER_TOO_SMALL) {
+        goto out;
+    }
+
+    ret = MBEDTLS_ERR_ECP_BAD_INPUT_DATA;
+    if (pubkey_size != public_key_size) {
+        goto out;
+    }
+
+    ret = mbedtls_ecp_point_write_binary(&key_pair->grp, &key_pair->Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
+                                         &pubkey_size, public_key, pubkey_size);
+    if (ret != 0) {
+        goto out;
+    }
+
+    ret = 0;
+out:
+    return ret;
+}
+
+int generate_key_pair(int curve_id, mbedtls_ecp_keypair* key_pair, uint8_t* public_key,
+                      size_t public_key_size, mbedtls_ctr_drbg_context* rng_ctx) {
+    mbedtls_ecp_keypair_init(key_pair);
+    int ret = mbedtls_ecp_gen_key(curve_id, key_pair, mbedtls_ctr_drbg_random, rng_ctx);
+    if (ret != 0) {
+        goto out;
+    }
+
+    ret = export_public_key(key_pair, public_key, public_key_size);
+out:
+    return ret;
+}
+
 static int hash_update_voter(mbedtls_sha256_context* sha, const tvp_voter_t* voter) {
     if (mbedtls_sha256_update_ret(sha, voter->public_key, sizeof(voter->public_key))) {
         return -1;

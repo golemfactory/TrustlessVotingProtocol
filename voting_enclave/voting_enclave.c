@@ -74,59 +74,6 @@ static void _hexdump(void* data, size_t size) {
 
 #define hexdump(x) _hexdump((void*)&x, sizeof(x))
 
-static int export_public_key(mbedtls_ecp_keypair* key_pair, uint8_t* public_key,
-                             size_t public_key_size) {
-    int ret = -1;
-    if (!key_pair)
-        goto out;
-
-    size_t pubkey_size;
-    ret = mbedtls_ecp_point_write_binary(&g_ec_group, &key_pair->Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
-                                         &pubkey_size, NULL, 0);
-    if (ret != MBEDTLS_ERR_ECP_BUFFER_TOO_SMALL) {
-        eprintf("Failed to get public key size: %d\n", ret);
-        goto out;
-    }
-
-    if (pubkey_size != public_key_size) {
-        eprintf("Invalid public key size\n");
-        goto out;
-    }
-
-    ret = mbedtls_ecp_point_write_binary(&g_ec_group, &key_pair->Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
-                                         &pubkey_size, public_key, pubkey_size);
-    if (ret != 0) {
-        eprintf("Failed to get public key: %d\n", ret);
-        goto out;
-    }
-
-    ret = 0;
-out:
-    return ret;
-}
-
-static int generate_key_pair(mbedtls_ecp_keypair* key_pair, uint8_t* public_key,
-                             size_t public_key_size) {
-    eprintf("Generating enclave signing key...\n");
-
-    mbedtls_ecp_keypair_init(key_pair);
-    int ret = mbedtls_ecp_gen_key(EC_CURVE_ID, key_pair, mbedtls_ctr_drbg_random, &g_rng);
-    if (ret != 0) {
-        eprintf("Failed to generate signing key: %d\n", ret);
-        goto out;
-    }
-
-    eprintf("Generated signing private key size: %d\n", mbedtls_mpi_size(&key_pair->d));
-
-    ret = export_public_key(key_pair, public_key, public_key_size);
-out:
-    return ret;
-}
-
-static void destroy_key_pair(mbedtls_ecp_keypair* key_pair) {
-    mbedtls_ecp_keypair_free(key_pair);
-}
-
 // Seal enclave state
 static int seal_data(const mbedtls_ecp_keypair* key_pair, const uint8_t* public_key,
                      size_t public_key_size) {
@@ -330,7 +277,9 @@ int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size
 
     mbedtls_ecp_keypair_init(&g_signing_key);
     if (sealed_data == NULL || sealed_size == 0) {
-        ret = generate_key_pair(&g_signing_key, g_public_key, sizeof(g_public_key));
+        eprintf("Generating enclave signing key...\n");
+        ret = generate_key_pair(EC_CURVE_ID, &g_signing_key, g_public_key, sizeof(g_public_key),
+                                &g_rng);
         if (ret < 0)
             goto out;
 
@@ -371,7 +320,7 @@ out:
     if (ret == 0) {
         g_initialized = true;
     } else { // destroy all secrets and other data
-        destroy_key_pair(&g_signing_key);
+        mbedtls_ecp_keypair_free(&g_signing_key);
         zero_memory(g_public_key, sizeof(g_public_key));
     }
 

@@ -6,6 +6,9 @@
 
 #include "tvp_msg.h"
 
+int generate_key_pair(int curve_id, mbedtls_ecp_keypair* key_pair, uint8_t* public_key,
+                      size_t public_key_size, mbedtls_ctr_drbg_context* rng_ctx);
+
 int hash_voting(tvp_voting_id_t* vid, const uint8_t* nonce, size_t nonce_len,
                        const tvp_msg_register_voting_eh_ve_t* vd);
 
