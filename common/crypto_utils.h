@@ -14,11 +14,10 @@ int hash_voting(tvp_voting_id_t* vid, const uint8_t* nonce, size_t nonce_len,
 
 int generate_nonce(nonce_t* nonce, mbedtls_ctr_drbg_context* rng_ctx);
 
-int sign_hash(uint8_t* sig, size_t slen, const uint8_t* hash, size_t hlen, mbedtls_ecp_keypair* key,
+int sign_hash(signature_t* sig, const hash_t* hash, mbedtls_ecp_keypair* key,
               mbedtls_ctr_drbg_context* rng_ctx);
 
-int verify_hash(uint8_t* sig, size_t slen, const uint8_t* hash, size_t hlen,
-                mbedtls_ecp_keypair* key);
+int verify_hash(const signature_t* sig, const hash_t* hash, mbedtls_ecp_keypair* key);
 
 int kdf(uint8_t* shared_sec, size_t shared_sec_len, uint8_t* salt, size_t salt_len, uint8_t* out,
         size_t out_len);

@@ -114,15 +114,17 @@ int generate_nonce(nonce_t* nonce, mbedtls_ctr_drbg_context* rng_ctx) {
     return mbedtls_ctr_drbg_random(rng_ctx, (unsigned char*)nonce, sizeof(*nonce));
 }
 
-int sign_hash(uint8_t* sig, size_t slen, const uint8_t* hash, size_t hlen, mbedtls_ecp_keypair* key,
+int sign_hash(signature_t* sig, const hash_t* hash, mbedtls_ecp_keypair* key,
               mbedtls_ctr_drbg_context* rng_ctx) {
     int ret = -1;
+    size_t slen = sizeof(*sig);
+    size_t hlen = sizeof(*hash);
     mbedtls_mpi r;
     mbedtls_mpi s;
     mbedtls_mpi_init(&r);
     mbedtls_mpi_init(&s);
 
-    ret = mbedtls_ecdsa_sign(&key->grp, &r, &s, &key->d, hash, hlen,
+    ret = mbedtls_ecdsa_sign(&key->grp, &r, &s, &key->d, (const unsigned char *)hash, hlen,
                              mbedtls_ctr_drbg_random, rng_ctx);
     if (ret) {
         goto out;
@@ -132,11 +134,11 @@ int sign_hash(uint8_t* sig, size_t slen, const uint8_t* hash, size_t hlen, mbedt
         goto out;
     }
 
-    ret = mbedtls_mpi_write_binary(&r, sig, slen / 2);
+    ret = mbedtls_mpi_write_binary(&r, (uint8_t*)sig, slen / 2);
     if (ret) {
         goto out;
     }
-    ret = mbedtls_mpi_write_binary(&s, sig + slen / 2, slen / 2);
+    ret = mbedtls_mpi_write_binary(&s, ((uint8_t*)sig) + slen / 2, slen / 2);
     if (ret) {
         goto out;
     }
@@ -148,24 +150,25 @@ out:
     return ret;
 }
 
-int verify_hash(uint8_t* sig, size_t slen, const uint8_t* hash, size_t hlen,
-                mbedtls_ecp_keypair* key) {
+int verify_hash(const signature_t* sig, const hash_t* hash, mbedtls_ecp_keypair* key) {
     int ret = -1;
+    size_t slen = sizeof(*sig);
+    size_t hlen = sizeof(*hash);
     mbedtls_mpi r;
     mbedtls_mpi s;
     mbedtls_mpi_init(&r);
     mbedtls_mpi_init(&s);
 
-    ret = mbedtls_mpi_read_binary(&r, sig, slen / 2);
+    ret = mbedtls_mpi_read_binary(&r, (const uint8_t*)sig, slen / 2);
     if (ret) {
         goto out;
     }
-    ret = mbedtls_mpi_read_binary(&s, sig + slen / 2, slen / 2);
+    ret = mbedtls_mpi_read_binary(&s, ((const uint8_t*)sig) + slen / 2, slen / 2);
     if (ret) {
         goto out;
     }
 
-    ret = mbedtls_ecdsa_verify(&key->grp, hash, hlen, &key->Q, &r, &s);
+    ret = mbedtls_ecdsa_verify(&key->grp, (const uint8_t*)hash, hlen, &key->Q, &r, &s);
     if (ret) {
         goto out;
     }
