@@ -104,7 +104,8 @@ int ve_load_enclave(const char* enclave_path, const char* sealed_state_path);
  */
 int ve_unload_enclave(void);
 
-int ve_submit_voting(tvp_msg_register_voting_eh_ve_t* voting_description);
+int ve_submit_voting(const tvp_msg_register_voting_eh_ve_t* voting_description,
+                     tvp_msg_register_voting_ve_eh_t* vdve);
 
 int ve_submit_vote(uint8_t* enc_vote, size_t enc_vote_size);
 

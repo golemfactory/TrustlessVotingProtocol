@@ -270,22 +270,21 @@ int ve_unload_enclave(void) {
     return ret;
 }
 
-int ve_submit_voting(tvp_msg_register_voting_eh_ve_t* voting_description) {
-    tvp_msg_register_voting_ve_eh_t vdve = { 0 };
-
-    int ret = 0;
+int ve_submit_voting(const tvp_msg_register_voting_eh_ve_t* voting_description,
+                     tvp_msg_register_voting_ve_eh_t* vdve) {
+    int ret = -1;
     sgx_status_t sgx_ret = e_register_voting(g_enclave_id, &ret,
                                 (uint8_t*)voting_description, sizeof(*voting_description),
-                                (uint8_t*)&vdve, sizeof(vdve));
+                                (uint8_t*)vdve, sizeof(*vdve));
     if (sgx_ret != SGX_SUCCESS || ret < 0) {
         ERROR("Voting registration failed: %d\n", ret);
         return ret;
     }
 
     INFO("Nonce: ");
-    HEXDUMP(vdve.vid_nonce);
+    HEXDUMP(vdve->vid_nonce);
     INFO("Sig: ");
-    HEXDUMP(vdve.vid_sig);
+    HEXDUMP(vdve->vid_sig);
 
     return 0;
 }

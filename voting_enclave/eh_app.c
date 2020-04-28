@@ -199,23 +199,28 @@ static int submit_voting(void) {
     vd->description = read_line(); // TODO: accept newlines
     vd->description_size = strlen(vd->description) + 1;
 
-#ifdef DEBUG
-    size_t vds_size;
-    void* vds = serialize_vd(vd, &vds_size);
-    if (!vds)
-        goto out;
-
-    ret = write_file("vd.tvp", vds, vds_size);
-    free(vds);
-    if (ret < 0)
-        goto out;
-#endif
-
-    ret = ve_submit_voting(vd);
+    tvp_msg_register_voting_ve_eh_t vdve = { 0 };
+    ret = ve_submit_voting(vd, &vdve);
     if (ret < 0) {
         printf("Voting submit failed: %d\n", ret);
     } else {
         puts("Voting submit successful\n");
+
+#ifdef DEBUG
+        size_t vds_size;
+        void* vds = serialize_vd(vd, &vds_size);
+        if (!vds)
+            goto out;
+
+        ret = write_file("vd.tvp", vds, vds_size);
+        free(vds);
+        if (ret < 0)
+            goto out;
+
+        ret = write_file("vdve.tvp", &vdve, sizeof(vdve));
+        if (ret < 0)
+            goto out;
+#endif
     }
 
 out:
