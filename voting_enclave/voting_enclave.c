@@ -602,13 +602,13 @@ int e_register_vote(uint8_t* enc_vote, size_t enc_vote_size, uint8_t* ret_buf,
         goto out;
     }
 
-    uint8_t hash[32];
+    hash_t hash;
     ret = mbedtls_sha256_ret((uint8_t*)&vote->vote, sizeof(vote->vote), hash, /*is224=*/0);
     if (ret) {
         goto out;
     }
 
-    ret = verify_hash(vote->sig, sizeof(vote->sig), hash, sizeof(hash), &voter_key);
+    ret = verify_hash(&vote->sig, &hash, &voter_key);
     if (ret) {
         eprintf("Wrong signature!\n");
         goto out;
@@ -697,8 +697,7 @@ out_send_result:
         goto out;
     }
 
-    if (sign_hash((uint8_t*)&vvr->sig, sizeof(vvr->sig), hash, sizeof(hash), &g_signing_key,
-                  &g_rng)) {
+    if (sign_hash(&vvr->sig, &hash, &g_signing_key, &g_rng)) {
         goto out;
     }
 
