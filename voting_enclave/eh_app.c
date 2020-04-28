@@ -8,6 +8,7 @@
 #include <mbedtls/base64.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
+#include <mbedtls/sha256.h>
 
 #include "crypto_utils.h"
 #include "eh_app.h"
@@ -133,6 +134,9 @@ out:
 static int submit_voting(void) {
     int ret = -1;
     size_t len;
+    void* vd_serialized = NULL;
+    size_t vd_size = 0;
+
     tvp_msg_register_voting_eh_ve_t* vd = calloc(1, sizeof(*vd));
     if (!vd) {
         fprintf(stderr, "Out of memory: %m\n");
@@ -199,6 +203,7 @@ static int submit_voting(void) {
     vd->description = read_line(); // TODO: accept newlines
     vd->description_size = strlen(vd->description) + 1;
 
+    // send to enclave
     tvp_msg_register_voting_ve_eh_t vdve = { 0 };
     ret = ve_submit_voting(vd, &vdve);
     if (ret < 0) {
@@ -206,14 +211,12 @@ static int submit_voting(void) {
     } else {
         puts("Voting submit successful\n");
 
-#ifdef DEBUG
-        size_t vds_size;
-        void* vds = serialize_vd(vd, &vds_size);
-        if (!vds)
-            goto out;
+    vd_serialized = serialize_vd(vd, &vd_size);
+    if (!vd_serialized)
+        goto out;
 
-        ret = write_file("vd.tvp", vds, vds_size);
-        free(vds);
+#ifdef DEBUG
+        ret = write_file("vd.tvp", vd_serialized, vd_size);
         if (ret < 0)
             goto out;
 
@@ -223,7 +226,44 @@ static int submit_voting(void) {
 #endif
     }
 
+    // sign VD|VDVE
+    signature_t vdeh_sig = { 0 };
+    hash_t hash = { 0 };
+    mbedtls_sha256_context sha = { 0 };
+
+    mbedtls_sha256_init(&sha);
+    ret = mbedtls_sha256_starts_ret(&sha, /*is224=*/0);
+    if (ret) {
+        goto out;
+    }
+    ret = mbedtls_sha256_update_ret(&sha, vd_serialized, vd_size);
+    if (ret) {
+        goto out;
+    }
+    ret = mbedtls_sha256_update_ret(&sha, (const unsigned char*)&vdve, sizeof(vdve));
+    if (ret) {
+        goto out;
+    }
+    ret = mbedtls_sha256_finish_ret(&sha, (unsigned char*)&hash);
+    if (ret) {
+        goto out;
+    }
+
+    // TODO: load EH keys
+    ret = sign_hash(&vdeh_sig, &hash, &g_eh_key, &g_rng);
+    if (ret) {
+        ERROR("Signing VD|VDVE failed\n");
+        goto out;
+    }
+    // sanity check
+    ret = verify_hash(&vdeh_sig, &hash, &g_eh_key);
+    if (ret) {
+        ERROR("Verifying VD|VDVE failed\n");
+        goto out;
+    }
+
 out:
+    free(vd_serialized);
     free(vd->description);
     free(vd->voters);
     free(vd);

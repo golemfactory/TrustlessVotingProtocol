@@ -458,8 +458,7 @@ int e_register_voting(uint8_t* voting_description, size_t vd_size,
     g_voting.started = false;
 
     signature_t sig = { 0 };
-    if (sign_hash((uint8_t*)&sig, sizeof(sig), (uint8_t*)&g_voting.vid, sizeof(g_voting.vid),
-                  &g_signing_key, &g_rng)) {
+    if (sign_hash(&sig, (const hash_t*)&g_voting.vid, &g_signing_key, &g_rng)) {
         eprintf("Failed to sign voting hash!\n");
         goto out;
     }
