@@ -14,7 +14,7 @@ ENCLAVE_BINARY_SIGNED ?= $(ENCLAVE_NAME).signed.so
 
 LIBRARY_NAME ?= ve_user
 LIBRARY_BIN ?= lib$(LIBRARY_NAME).so
-APP_NAME ?= ve_app
+APP_NAME ?= eh_app
 APP_BIN ?= $(APP_NAME)
 
 DEFAULT_PREFIX := /usr/local

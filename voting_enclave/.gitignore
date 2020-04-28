@@ -8,7 +8,7 @@
 *.so.sigdata
 
 /mbedtls
-/ve_app
+/eh_app
 
 # generated files
 /voting_enclave_mrsigner.h
