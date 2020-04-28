@@ -25,11 +25,12 @@
 /* Intel's assert.h does not define this. */
 #define static_assert _Static_assert
 
-static bool                     g_initialized                 = false;
-static uint8_t                  g_public_key[EC_PUB_KEY_SIZE] = {0};
-static mbedtls_ecp_keypair      g_signing_key                 = {0};
-static mbedtls_ecp_group        g_ec_group                    = {0};
-static mbedtls_ctr_drbg_context g_rng                         = {0};
+static bool                     g_initialized                     = false;
+static uint8_t                  g_public_key[EC_PUB_KEY_SIZE]     = {0};
+static uint8_t                  g_public_key_hash[sizeof(hash_t)] = {0};
+static mbedtls_ecp_keypair      g_signing_key                     = {0};
+static mbedtls_ecp_group        g_ec_group                        = {0};
+static mbedtls_ctr_drbg_context g_rng                             = {0};
 static sgx_thread_mutex_t       g_mutex = SGX_THREAD_MUTEX_INITIALIZER;
 
 /*! Enclave flags that will matter for sealing/unsealing secrets (keys).
@@ -145,7 +146,8 @@ out:
 
 // Restore enclave keys from sealed data
 static int unseal_data(const uint8_t* sealed_data, size_t sealed_size,
-                       mbedtls_ecp_keypair* key_pair, uint8_t* public_key, size_t public_key_size) {
+                       mbedtls_ecp_keypair* key_pair, uint8_t* public_key, size_t public_key_size,
+                       uint8_t* public_key_hash) {
     sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
     uint8_t* unsealed_data = NULL;
     uint32_t unsealed_size = 0;
@@ -209,6 +211,12 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size,
     ret = mbedtls_ecp_check_pubkey(&g_ec_group, &key_pair->Q);
     if (ret != 0) {
         eprintf("Unsealed public key is invalid: %d\n", ret);
+        goto out;
+    }
+
+    ret = mbedtls_sha256_ret(public_key, public_key_size, public_key_hash, /*is224=*/0);
+    if (ret != 0) {
+        eprintf("Failed to hash public key: %d\n", ret);
         goto out;
     }
 
@@ -283,12 +291,16 @@ int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size
         if (ret < 0)
             goto out;
 
+        ret = mbedtls_sha256_ret(g_public_key, sizeof(g_public_key), g_public_key_hash, /*is224=*/0);
+        if (ret < 0)
+            goto out;
+
         ret = seal_data(&g_signing_key, g_public_key, sizeof(g_public_key));
         if (ret < 0)
             goto out;
     } else {
         ret = unseal_data(sealed_data, sealed_size, &g_signing_key, g_public_key,
-                          sizeof(g_public_key));
+                          sizeof(g_public_key), g_public_key_hash);
         if (ret < 0)
             goto out;
     }
@@ -301,6 +313,8 @@ int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size
 
     eprintf("Enclave public key: ");
     hexdump(g_public_key);
+    eprintf("Enclave public key hash: ");
+    hexdump(g_public_key_hash);
 
     ret = -1;
     if (pubkey_size > 0 && pubkey_size != sizeof(g_public_key)) {
@@ -345,10 +359,9 @@ int e_get_report(const sgx_target_info_t* target_info, sgx_report_t* report) {
 
     sgx_report_data_t report_data = {0};
 
-    // Use public key as custom data in the report
-    // Since we use different curve now, skip this.
-    //assert(sizeof g_public_key <= sizeof report_data);
-    //memcpy(&report_data, g_public_key, sizeof g_public_key);
+    // Use public key hash as custom data in the report
+    assert(sizeof g_public_key_hash <= sizeof report_data);
+    memcpy(&report_data, g_public_key_hash, sizeof g_public_key_hash);
 
     return get_report(target_info, &report_data, report);
 }
