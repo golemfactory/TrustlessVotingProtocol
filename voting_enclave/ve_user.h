@@ -52,14 +52,14 @@ int write_file(const char* path, const void* buffer, size_t size);
  *  \brief Loads the enclave, generates new enclave key pair, seals enclave state, exports enclave
  *         public key.
  *
- *  \param[in] enclave_path        Path to enclave binary.
- *  \param[in] sealed_state_path   Path to sealed enclave state (will be overwritten).
- *  \param[in] enclave_pubkey_path Path where enclave public key will be saved.
+ *  \param[in]  enclave_path      Path to enclave binary.
+ *  \param[in]  sealed_state_path Path to sealed enclave state (will be overwritten).
+ *  \param[out] enclave_pubkey    Enclave public key.
  *
  *  \return 0 on success, negative on error.
  */
 int ve_generate_keys(const char* enclave_path, const char* sealed_state_path,
-                     const char* enclave_pubkey_path);
+                     public_key_t* enclave_pubkey);
 
 /*!
  *  \brief Get SGX quote of the enclave.
@@ -90,12 +90,14 @@ int ve_verify_quote(const char* ias_api_key, const char* nonce, const char* quot
 /*!
  *  \brief Load voting enclave and restore its state from a sealed blob.
  *
- *  \param[in] enclave_path      Path to enclave binary.
- *  \param[in] sealed_state_path Path to sealed enclave state.
+ *  \param[in]  enclave_path      Path to enclave binary.
+ *  \param[in]  sealed_state_path Path to sealed enclave state.
+ *  \param[out] enclave_pubkey    (Optional) Enclave public key.
  *
  *  \return 0 on success, negative on error.
  */
-int ve_load_enclave(const char* enclave_path, const char* sealed_state_path);
+int ve_load_enclave(const char* enclave_path, const char* sealed_state_path,
+                    public_key_t* enclave_pubkey);
 
 /*!
  *  \brief Unload voting enclave.

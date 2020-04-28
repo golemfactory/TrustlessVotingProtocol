@@ -13,7 +13,7 @@ static sgx_enclave_id_t g_enclave_id = 0;
 static const char* g_sealed_state_path = NULL;
 
 static int load_ve(const char* enclave_path, bool debug_enabled, const char* sealed_state_path,
-                   bool load_sealed_state, const char* public_key_path) {
+                   bool load_sealed_state, public_key_t* enclave_pubkey) {
     int ret = -1;
     uint8_t* sealed_state = NULL;
 
@@ -37,12 +37,11 @@ static int load_ve(const char* enclave_path, bool debug_enabled, const char* sea
             goto out;
     }
 
-    uint8_t enclave_public_key[EC_PUB_KEY_SIZE];
     // ECALL: enclave initialization
     sgx_status_t sgx_ret;
-    if (public_key_path) {
-        sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size, enclave_public_key,
-                               EC_PUB_KEY_SIZE);
+    if (enclave_pubkey) {
+        sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size,
+                               (uint8_t*)enclave_pubkey, sizeof(*enclave_pubkey));
     } else {
         sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size, NULL, 0);
     }
@@ -55,13 +54,6 @@ static int load_ve(const char* enclave_path, bool debug_enabled, const char* sea
     if (ret < 0) {
         ERROR("Enclave initialization failed\n");
         goto out;
-    }
-
-    if (public_key_path) {
-        INFO("Saving public enclave key to '%s'\n", public_key_path);
-        ret = write_file(public_key_path, &enclave_public_key, EC_PUB_KEY_SIZE);
-    } else {
-        ret = 0;
     }
 
 out:
@@ -190,10 +182,10 @@ out:
 }
 
 int ve_generate_keys(const char* enclave_path, const char* sealed_state_path,
-                     const char* enclave_pubkey_path) {
+                     public_key_t* enclave_pubkey) {
     return load_ve(enclave_path, ENCLAVE_DEBUG_ENABLED, sealed_state_path,
                    false, // overwrite existing sealed state
-                   enclave_pubkey_path); // export public key
+                   enclave_pubkey); // export public key
 }
 
 int ve_get_quote(const char* sp_id_str, const char* sp_quote_type_str, const char* quote_path) {
@@ -255,10 +247,11 @@ out:
     return ret;
 }
 
-int ve_load_enclave(const char* enclave_path, const char* sealed_state_path) {
+int ve_load_enclave(const char* enclave_path, const char* sealed_state_path,
+                    public_key_t* enclave_pubkey) {
     return load_ve(enclave_path, ENCLAVE_DEBUG_ENABLED, sealed_state_path,
                    true, // load existing sealed state
-                   NULL); // don't export public key
+                   enclave_pubkey);
 }
 
 int ve_unload_enclave(void) {

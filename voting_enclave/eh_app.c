@@ -141,7 +141,8 @@ out:
 // vd must be serialized
 static void* serialize_vdeh(const void* vd, size_t vd_size,
                             const tvp_msg_register_voting_ve_eh_t* vdve, const void* ias_report,
-                            size_t ias_report_size, size_t* vdeh_serialized_size) {
+                            size_t ias_report_size, const public_key_t* ve_pubkey,
+                            size_t* vdeh_serialized_size) {
     int ret = -1;
     size_t vdeh_size = vd_size
                        + sizeof(*vdve)
@@ -194,9 +195,8 @@ static void* serialize_vdeh(const void* vd, size_t vd_size,
     }
     p += sizeof(*vdeh_sig);
 
-    public_key_t ve_pubkey = {0}; // TODO
-    memcpy(p, &ve_pubkey, sizeof(ve_pubkey));
-    p += sizeof(ve_pubkey);
+    memcpy(p, ve_pubkey, sizeof(*ve_pubkey));
+    p += sizeof(*ve_pubkey);
 
     memcpy(p, &ias_report_size, sizeof(ias_report_size));
     p += sizeof(ias_report_size);
@@ -212,7 +212,7 @@ out:
     return vdeh;
 }
 
-static int submit_voting(void) {
+static int submit_voting(const public_key_t* ve_pubkey) {
     int ret = -1;
     size_t len;
     void* vd_serialized = NULL;
@@ -320,7 +320,8 @@ static int submit_voting(void) {
         goto out;
 
     size_t vdeh_size = 0;
-    vdeh = serialize_vdeh(vd_serialized, vd_size, &vdve, ias_report, ias_report_size, &vdeh_size);
+    vdeh = serialize_vdeh(vd_serialized, vd_size, &vdve, ias_report, ias_report_size, ve_pubkey,
+                          &vdeh_size);
     if (!vdeh)
         goto out;
 
@@ -404,13 +405,13 @@ static int eh_generate_keys(const char* eh_private_key_path, const char* eh_publ
         goto out;
     }
 
-    INFO("Writing EH private key to %s...\n", eh_private_key_path);
+    INFO("Writing EH private key to '%s'\n", eh_private_key_path);
     ret = write_file(eh_private_key_path, buf, private_key_size);
     if (ret != 0) {
         goto out;
     }
 
-    INFO("Writing EH public key to %s...\n", eh_public_key_path);
+    INFO("Writing EH public key to '%s'\n", eh_public_key_path);
     ret = write_file(eh_public_key_path, g_eh_public_key, sizeof(g_eh_public_key));
 out:
     if (buf)
@@ -423,7 +424,7 @@ static int eh_load_keys(const char* eh_private_key_path, const char* eh_public_k
     private_key_t key = { 0 };
     int ret = -1;
 
-    INFO("Reading EH private key from %s...\n", eh_private_key_path);
+    INFO("Reading EH private key from '%s'\n", eh_private_key_path);
     size_t key_size = sizeof(key);
     if (!read_file(eh_private_key_path, &key, &key_size)) {
         goto out;
@@ -441,7 +442,7 @@ static int eh_load_keys(const char* eh_private_key_path, const char* eh_public_k
         goto out;
     }
 
-    INFO("Reading EH public key from %s...\n", eh_public_key_path);
+    INFO("Reading EH public key from '%s'\n", eh_public_key_path);
     key_size = sizeof(g_eh_public_key);
     if (!read_file(eh_public_key_path, &g_eh_public_key, &key_size)) {
         goto out;
@@ -556,7 +557,13 @@ int main(int argc, char* argv[]) {
 
     switch (mode[0]) {
         case 'i': { // init
-            ret = ve_generate_keys(enclave_path, enclave_state_path, enclave_public_key_path);
+            public_key_t ve_pubkey = { 0 };
+            ret = ve_generate_keys(enclave_path, enclave_state_path, &ve_pubkey);
+            if (ret < 0)
+                goto out;
+
+            INFO("Saving public enclave key to '%s'\n", enclave_public_key_path);
+            ret = write_file(enclave_public_key_path, &ve_pubkey, sizeof(ve_pubkey));
             break;
         }
 
@@ -584,7 +591,7 @@ int main(int argc, char* argv[]) {
                 goto out;
             }
 
-            ret = ve_load_enclave(enclave_path, enclave_state_path);
+            ret = ve_load_enclave(enclave_path, enclave_state_path, NULL);
             if (ret < 0)
                 goto out;
 
@@ -612,7 +619,8 @@ int main(int argc, char* argv[]) {
         }
 
         case 'r': { // run
-            ret = ve_load_enclave(enclave_path, enclave_state_path);
+            public_key_t ve_pubkey = { 0 };
+            ret = ve_load_enclave(enclave_path, enclave_state_path, &ve_pubkey);
             if (ret < 0)
                 goto out;
 
@@ -641,7 +649,7 @@ int main(int argc, char* argv[]) {
                 ret = 0;
                 switch (buf[0]) {
                     case 's':
-                        ret = submit_voting();
+                        ret = submit_voting(&ve_pubkey);
                         break;
                     case 'b':
                         ret = begin_voting();
