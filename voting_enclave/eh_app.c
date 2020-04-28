@@ -6,16 +6,25 @@
 #include <stdio.h>
 
 #include <mbedtls/base64.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/entropy.h>
 
+#include "crypto_utils.h"
 #include "eh_app.h"
 #include "util.h"
 #include "ve_user.h"
+
+static mbedtls_ecp_keypair g_eh_key = {0};
+static uint8_t g_eh_public_key[EC_PUB_KEY_SIZE] = {0};
+static mbedtls_ctr_drbg_context g_rng = {0};
 
 static struct option g_options[] = {
     { "help", no_argument, 0, 'h' },
     { "sealed-path", required_argument, 0, 's' },
     { "enclave-path", required_argument, 0, 'e' },
     { "pubkey-path", required_argument, 0, 'p' },
+    { "eh-pubkey-path", required_argument, 0, 'P' },
+    { "eh-prvkey-path", required_argument, 0, 'K' },
     { "spid", required_argument, 0, 'i' },
     { "quote-type", required_argument, 0, 't' },
     { "api-key", required_argument, 0, 'k' },
@@ -27,27 +36,33 @@ static struct option g_options[] = {
 static void usage(const char* exec) {
     printf("Usage: %s mode [options]\n", exec);
     printf("Available modes:\n");
-    printf("  init                     Generate enclave's key pair and export the public key\n");
-    printf("  quote                    Generate enclave quote and export it,\n");
-    printf("                           verify the quote with IAS and save the report\n");
-    printf("  run                      Run enclave from sealed state. Listens for commands on stdin.\n");
+    printf("  init                       Generate enclave's key pair and export the public key\n");
+    printf("  gen-key                    Generate enclave host's key pair and export the public key\n");
+    printf("  quote                      Generate enclave quote and export it,\n");
+    printf("                             verify the quote with IAS and save the report\n");
+    printf("  run                        Run enclave from sealed state. Listens for commands on stdin.\n");
     printf("Available general options:\n");
-    printf("  --help, -h               Display this help\n");
-    printf("  --sealed-path, -s PATH   Path for sealed enclave storage, default: "
+    printf("  --help, -h                 Display this help\n");
+    printf("  --sealed-path, -s PATH     Path for sealed enclave storage, default: "
            DEFAULT_ENCLAVE_STATE_PATH "\n");
-    printf("  --enclave-path, -e PATH  Path for enclave binary, default: "
+    printf("  --enclave-path, -e PATH    Path for enclave binary, default: "
            DEFAULT_ENCLAVE_PATH "\n");
     printf("Available init options:\n");
-    printf("  --pubkey-path, -p PATH   Path to save enclave public key to, default: "
+    printf("  --pubkey-path, -p PATH     Path to save enclave public key to, default: "
            DEFAULT_ENCLAVE_PUBLIC_KEY_PATH "\n");
+    printf("Available gen-key options:\n");
+    printf("  --eh-pubkey-path, -P PATH  Path to save enclave host's public key to, default: "
+           DEFAULT_ENCLAVE_HOST_PUBLIC_KEY_PATH "\n");
+    printf("  --eh-prvkey-path, -K PATH  Path to save enclave host's private key to, default: "
+           DEFAULT_ENCLAVE_HOST_PRIVATE_KEY_PATH "\n");
     printf("Available quote options:\n");
-    printf("  --spid, -i SPID          Service Provider ID received during IAS registration"
+    printf("  --spid, -i SPID            Service Provider ID received during IAS registration"
            " (hex string)\n");
-    printf("  --api-key, -k KEY        IAS API key (hex string)\n");
-    printf("  --quote-type, -t TYPE    Service Provider quote type, (l)inkable or (u)nlinkable)\n");
-    printf("  --quote-path, -q PATH    Path to save enclave quote to, default: "
+    printf("  --api-key, -k KEY          IAS API key (hex string)\n");
+    printf("  --quote-type, -t TYPE      Service Provider quote type, (l)inkable or (u)nlinkable)\n");
+    printf("  --quote-path, -q PATH      Path to save enclave quote to, default: "
            DEFAULT_ENCLAVE_QUOTE_PATH "\n");
-    printf("  --report-path, -r PATH   Path to save IAS quote verification report to, default: "
+    printf("  --report-path, -r PATH     Path to save IAS quote verification report to, default: "
            DEFAULT_ENCLAVE_REPORT_PATH "\n");
 }
 
@@ -253,6 +268,60 @@ out:
     return ret;
 }
 
+static int eh_generate_keys(const char* eh_private_key_path, const char* eh_public_key_path) {
+    void* buf = NULL;
+    int ret = generate_key_pair(EC_CURVE_ID, &g_eh_key, g_eh_public_key, sizeof(g_eh_public_key),
+                                &g_rng);
+    if (ret != 0) {
+        ERROR("Failed to seed crypto PRNG: %d\n", ret);
+        goto out;
+    }
+
+    size_t private_key_size = mbedtls_mpi_size(&g_eh_key.d);
+    buf = malloc(private_key_size);
+    if (!buf) {
+        ERROR("Out of memory\n");
+        goto out;
+    }
+
+    INFO("EH public key: ");
+    HEXDUMP(g_eh_public_key);
+
+    ret = mbedtls_mpi_write_binary(&g_eh_key.d, buf, private_key_size);
+    if (ret != 0) {
+        ERROR("Failed to get private key data: %d\n", ret);
+        goto out;
+    }
+
+    INFO("Writing EH private key to %s...\n", eh_private_key_path);
+    ret = write_file(eh_private_key_path, buf, private_key_size);
+    if (ret != 0) {
+        goto out;
+    }
+
+    INFO("Writing EH public key to %s...\n", eh_public_key_path);
+    ret = write_file(eh_public_key_path, g_eh_public_key, sizeof(g_eh_public_key));
+out:
+    if (buf)
+        memset(buf, 0, private_key_size);
+    free(buf);
+    return ret;
+}
+
+static int rng_init(void) {
+    unsigned char entropy_sig[] = "enclave host app";
+    mbedtls_entropy_context entropy;
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&g_rng);
+
+    int ret = mbedtls_ctr_drbg_seed(&g_rng, mbedtls_entropy_func, &entropy, entropy_sig,
+                                    sizeof(entropy_sig));
+    if (ret != 0) {
+        ERROR("Failed to seed crypto PRNG: %d\n", ret);
+    }
+    return ret;
+}
+
 int main(int argc, char* argv[]) {
     int this_option = 0;
     char* sp_id = NULL;
@@ -260,6 +329,8 @@ int main(int argc, char* argv[]) {
     char* api_key = NULL;
     char* enclave_state_path = DEFAULT_ENCLAVE_STATE_PATH;
     char* enclave_public_key_path = DEFAULT_ENCLAVE_PUBLIC_KEY_PATH;
+    char* eh_public_key_path = DEFAULT_ENCLAVE_HOST_PUBLIC_KEY_PATH;
+    char* eh_private_key_path = DEFAULT_ENCLAVE_HOST_PRIVATE_KEY_PATH;
     char* enclave_path = DEFAULT_ENCLAVE_PATH;
     char* quote_path = DEFAULT_ENCLAVE_QUOTE_PATH;
     char* report_path = DEFAULT_ENCLAVE_REPORT_PATH;
@@ -267,7 +338,7 @@ int main(int argc, char* argv[]) {
     int ret = -1;
 
     while (true) {
-        this_option = getopt_long(argc, argv, "hs:e:p:i:t:k:q:r:", g_options, NULL);
+        this_option = getopt_long(argc, argv, "hs:e:p:P:K:i:t:k:q:r:", g_options, NULL);
 
         if (this_option == -1)
             break;
@@ -284,6 +355,12 @@ int main(int argc, char* argv[]) {
                 break;
             case 'p':
                 enclave_public_key_path = optarg;
+                break;
+            case 'P':
+                eh_public_key_path = optarg;
+                break;
+            case 'K':
+                eh_private_key_path = optarg;
                 break;
             case 'i':
                 sp_id = optarg;
@@ -315,9 +392,17 @@ int main(int argc, char* argv[]) {
 
     mode = argv[optind++];
 
+    if (rng_init() < 0)
+        goto out;
+
     switch (mode[0]) {
         case 'i': { // init
             ret = ve_generate_keys(enclave_path, enclave_state_path, enclave_public_key_path);
+            break;
+        }
+
+        case 'g': { // gen-key
+            ret = eh_generate_keys(eh_private_key_path, eh_public_key_path);
             break;
         }
 

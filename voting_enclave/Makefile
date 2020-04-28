@@ -162,8 +162,8 @@ $(ENCLAVE_NAME)_u.o: $(ENCLAVE_NAME)_u.c
 MBEDTLS_OBJS_APP := \
 	$(MBEDTLS_LIB)/base64.o
 
-$(APP_BIN): $(APP_NAME).o $(LIBRARY_BIN)
-	$(CC) $(LDFLAGS) -Wl,-rpath=. -Wl,-rpath=$(COMMON_PATH) $< $(MBEDTLS_OBJS_APP) \
+$(APP_BIN): $(APP_NAME).o $(LIBRARY_BIN) $(ENCLAVE_COMMONS)
+	$(CC) $(LDFLAGS) -Wl,-rpath=. -Wl,-rpath=$(COMMON_PATH) $^ $(MBEDTLS_OBJS_APP) \
 	-o $@ -L. -l$(LIBRARY_NAME) -L$(COMMON_PATH) -lsgx_util
 
 $(APP_NAME).o: $(APP_NAME).c

@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 #include <sgx_report.h>
+#include <mbedtls/ecp.h>
+
+/*! EC curve ID used for digital signatures.
+ * TODO: change it to Curve25519 once MbedTLS implements EdDSA. */
+#define EC_CURVE_ID MBEDTLS_ECP_DP_SECP256R1
 
 #pragma pack(push, 1)
 
@@ -26,6 +31,17 @@ typedef uint8_t public_key_t[65];
 typedef uint8_t private_key_t[32];
 typedef uint8_t signature_t[64];
 
+/*! Sizes of the EC keys (in bytes). */
+#define EC_PUB_KEY_SIZE sizeof(public_key_t)
+#define EC_PRIV_KEY_SIZE sizeof(private_key_t)
+
+/*! Size of the EC signature (in bytes). */
+#define EC_SIGNATURE_SIZE sizeof(signature_t)
+
+#define IV_LEN 16
+#define SALT_LEN IV_LEN
+#define SIZE_WITH_PAD(x) ((x) / 16 * 16 + 16)
+
 // protocol message type
 // format: TVP_MSG_OPERATION_FROM_TO
 typedef enum {
@@ -46,8 +62,7 @@ typedef enum {
 init enclave:
 EH->VE  {}
 VE->EH  {report(VE), pubkey(VE)}
-        report(VE) contains pubkey(VE) in the report_data field but we include it in a separate
-        field here in case the key format changes and can't fit in report_data.
+        report(VE) contains hash(pubkey(VE)) in the report_data field
         EH gets quote(VE), verifies it with IAS (SPID must match), gets IASreport(VE)
 */
 typedef struct { // VE -> EH
@@ -92,7 +107,7 @@ typedef struct { // EH -> V [VDEH]
     tvp_msg_register_voting_eh_ve_t vd;    // serialized
     tvp_msg_register_voting_ve_eh_t vdve;
     signature_t  eh_sig;                   // sig(EH, hash(VD | VDVE))
-    public_key_t ve_public_key;            // embedded in quote(VE)
+    public_key_t ve_public_key;            // hash embedded in quote(VE)
     size_t       ve_quote_ias_report_size; // size of ve_quote_ias_report
     char         ve_quote_ias_report[];    // serialized IAS report of quote(VE) verification,
                                            // contains embedded quote
