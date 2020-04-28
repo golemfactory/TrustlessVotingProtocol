@@ -65,14 +65,37 @@ static void print_banner(void) {
     puts("submit a (v)ote");
 }
 
+static char* read_line(void) {
+    size_t buf_size = 256;
+    char* str = malloc(buf_size);
+    if (!str)
+        return NULL;
+    int c;
+    size_t len = 0;
+
+    while ((c = getchar()) != EOF && c != '\n') {
+        str[len++] = c;
+        if (len == buf_size) {
+            buf_size *= 2;
+            char* old = str;
+            str = realloc(str, buf_size);
+            if (!str) {
+                free(old);
+                return NULL;
+            }
+        }
+    }
+
+    str[len] = '\0';
+    return str;
+}
+
 static int submit_voting(void) {
     int ret = -1;
     size_t len;
-    tvp_voter_t* voters = NULL;
-    char* description = NULL;
     tvp_msg_register_voting_eh_ve_t* vd = calloc(1, sizeof(*vd));
     if (!vd) {
-        fprintf(stderr, "OOM: %m\n");
+        fprintf(stderr, "Out of memory: %m\n");
         goto out;
     }
 
@@ -108,53 +131,33 @@ static int submit_voting(void) {
         goto out;
     }
 
-    voters = malloc(sizeof(*voters) * vd->num_voters);
-    if (!voters) {
-        fprintf(stderr, "OOM: %m\n");
+    vd->voters = malloc(sizeof(*vd->voters) * vd->num_voters);
+    if (!vd->voters) {
+        fprintf(stderr, "Out of memory: %m\n");
         goto out;
     }
-    vd->voters = voters;
 
     for (size_t i = 0; i < vd->num_voters; ++i) {
         printf("Enter public key (hex) of voter number %zu:\n", i);
-        char buf[0x100] = { 0 };
-        if (!fgets(buf, sizeof buf, stdin) || (len = strlen(buf)) != sizeof(voters[i].public_key) * 2 + 1) {
-            fprintf(stderr, "Reading public key of voter number %zu failed\n", i);
+        char* key_str = read_line();
+        // parse_hex checks for proper string length
+        if (parse_hex(key_str, &vd->voters[i].public_key, sizeof(vd->voters[i].public_key)) < 0) {
+            fprintf(stderr, "Invalid public key of voter number %zu\n", i);
+            free(key_str);
             goto out;
         }
-        if (len && buf[len - 1] == '\n') {
-            buf[len - 1] = '\0';
-        }
-        if (parse_hex(buf, &voters[i].public_key, sizeof(voters[i].public_key)) < 0) {
-            goto out;
-        }
+        free(key_str);
 
         printf("Enter weight of voter number %zu:\n", i);
-        if (fscanf(stdin, "%u%*1[ \r\n]", &voters[i].weight) != 1) {
+        if (fscanf(stdin, "%u%*1[ \r\n]", &vd->voters[i].weight) != 1) {
             fprintf(stderr, "Reading weight of voter number %zu failed\n", i);
             goto out;
         }
     }
 
-    puts("Enter description size:");
-    if (fscanf(stdin, "%zu%*1[ \r\n]", &vd->description_size) != 1) {
-        fprintf(stderr, "Reading description size failed\n");
-        goto out;
-    }
-
-    description = calloc(vd->description_size + 1, 1);
-    if (!description) {
-        fprintf(stderr, "OOM: %m\n");
-        goto out;
-    }
     puts("Enter description:");
-    if (fread(description, vd->description_size, 1, stdin) != 1) {
-        fprintf(stderr, "Reading description failed\n");
-        goto out;
-    }
-    fgetc(stdin);
-    vd->description = description;
-
+    vd->description = read_line(); // TODO: accept newlines
+    vd->description_size = strlen(vd->description) + 1;
 
     ret = ve_submit_voting(vd);
     if (ret < 0) {
@@ -164,8 +167,8 @@ static int submit_voting(void) {
     }
 
 out:
-    free(description);
-    free(voters);
+    free(vd->description);
+    free(vd->voters);
     free(vd);
     return ret;
 }
