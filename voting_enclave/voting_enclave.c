@@ -755,7 +755,7 @@ out_send_result:
     ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, sizeof(vvr_data), iv, vvr_data,
                                 ret_buf + IV_LEN);
     if (ret) {
-        eprintf("Decryption failed!\n");
+        eprintf("Encryption failed!\n");
         goto out;
     }
 

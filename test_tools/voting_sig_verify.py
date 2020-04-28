@@ -4,7 +4,7 @@ from Crypto.Signature import DSS
 import struct
 
 
-k = input("Input pubkey: ")
+k = input("Input server pubkey: ")
 k = bytes.fromhex(k)
 assert len(k) == 65
 n = input("Input nonce: ")
@@ -14,18 +14,33 @@ sig = bytes.fromhex(sig)
 
 h = SHA256.new()
 h.update(n)
-h.update(b'\x00'*32) # start_time
-h.update(b'\x00'*32) # end_time
-h.update(struct.pack("<I", 4)) # num_options
-h.update(struct.pack("<I", 2)) # num_voters
+x = input("Input start time: ").encode('utf-8')
+assert len(x) <= 32
+h.update(x.ljust(32, b'\x00'))
+x = input("Input end time: ").encode('utf-8')
+assert len(x) <= 32
+h.update(x.ljust(32, b'\x00'))
 
-h.update(k) # voter0 key
-h.update(struct.pack("<I", 3)) # voter0 weight
-h.update(k) # voter1 key
-h.update(struct.pack("<I", 4)) # voter1 weight
+no = input("Input number of options: ")
+no = int(no)
+h.update(struct.pack("<I", no)) # num_options
 
-h.update(struct.pack("<Q", 4)) # description_size
-h.update(b'abcd') # description
+vn = input("Input number of voters: ")
+vn = int(vn)
+h.update(struct.pack("<I", vn)) # num_voters
+for i in range(vn):
+    vk = input("Input voter pubkey: ")
+    vk = bytes.fromhex(vk)
+    h.update(vk)
+    vw = input("Input voter weight: ")
+    vw = int(vw)
+    h.update(struct.pack("<I", vw)) # voter weight
+
+desc = input("Input description: ").encode('utf-8')
+h.update(struct.pack("<Q", len(desc)))
+h.update(desc)
+
+print("VID: " + h.hexdigest())
 
 der_key = b"\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00"
 der_key += k
