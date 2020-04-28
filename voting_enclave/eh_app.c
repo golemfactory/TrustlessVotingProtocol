@@ -90,6 +90,31 @@ static char* read_line(void) {
     return str;
 }
 
+// assumes vd has valid structure, caller needs to free returned buffer
+void* serialize_vd(const tvp_msg_register_voting_eh_ve_t* vd, size_t* vd_serialized_size) {
+    const size_t constant_size = offsetof(tvp_msg_register_voting_eh_ve_t, voters);
+    size_t voters_size = vd->num_voters * sizeof(*vd->voters);
+    size_t vd_size = constant_size
+                     + voters_size
+                     + sizeof(vd->description_size)
+                     + vd->description_size;
+    void* vd_serialized = calloc(1, vd_size);
+    if (!vd_serialized) {
+        ERROR("Out of memory\n");
+        goto out;
+    }
+
+    memcpy(vd_serialized, vd, constant_size);
+    memcpy(vd_serialized + constant_size, vd->voters, voters_size);
+    memcpy(vd_serialized + constant_size + voters_size, &vd->description_size,
+           sizeof(vd->description_size));
+    memcpy(vd_serialized + constant_size + voters_size + sizeof(vd->description_size),
+           vd->description, vd->description_size);
+    *vd_serialized_size = vd_size;
+out:
+    return vd_serialized;
+}
+
 static int submit_voting(void) {
     int ret = -1;
     size_t len;
@@ -158,6 +183,18 @@ static int submit_voting(void) {
     puts("Enter description:");
     vd->description = read_line(); // TODO: accept newlines
     vd->description_size = strlen(vd->description) + 1;
+
+#ifdef DEBUG
+    size_t vds_size;
+    void* vds = serialize_vd(vd, &vds_size);
+    if (!vds)
+        goto out;
+
+    ret = write_file("vd.tvp", vds, vds_size);
+    free(vds);
+    if (ret < 0)
+        goto out;
+#endif
 
     ret = ve_submit_voting(vd);
     if (ret < 0) {
