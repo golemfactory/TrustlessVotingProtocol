@@ -65,6 +65,11 @@ static void usage(const char* exec) {
            DEFAULT_ENCLAVE_QUOTE_PATH "\n");
     printf("  --report-path, -r PATH     Path to save IAS quote verification report to, default: "
            DEFAULT_ENCLAVE_REPORT_PATH "\n");
+    printf("Available run options:\n");
+    printf("  --eh-pubkey-path, -P PATH  Path to load enclave host's public key from, default: "
+           DEFAULT_ENCLAVE_HOST_PUBLIC_KEY_PATH "\n");
+    printf("  --eh-prvkey-path, -K PATH  Path to load enclave host's private key from, default: "
+           DEFAULT_ENCLAVE_HOST_PRIVATE_KEY_PATH "\n");
 }
 
 static bool g_keep_listening = true;
@@ -201,7 +206,7 @@ static int submit_voting(void) {
 
     puts("Enter description:");
     vd->description = read_line(); // TODO: accept newlines
-    vd->description_size = strlen(vd->description) + 1;
+    vd->description_size = strlen(vd->description);
 
     // send to enclave
     tvp_msg_register_voting_ve_eh_t vdve = { 0 };
@@ -249,16 +254,15 @@ static int submit_voting(void) {
         goto out;
     }
 
-    // TODO: load EH keys
     ret = sign_hash(&vdeh_sig, &hash, &g_eh_key, &g_rng);
     if (ret) {
-        ERROR("Signing VD|VDVE failed\n");
+        ERROR("Signing hash(VD|VDVE) failed\n");
         goto out;
     }
     // sanity check
     ret = verify_hash(&vdeh_sig, &hash, &g_eh_key);
     if (ret) {
-        ERROR("Verifying VD|VDVE failed\n");
+        ERROR("Verifying sig(EH, hash(VD|VDVE)) failed\n");
         goto out;
     }
 
@@ -350,6 +354,54 @@ out:
     if (buf)
         memset(buf, 0, private_key_size);
     free(buf);
+    return ret;
+}
+
+static int eh_load_keys(const char* eh_private_key_path, const char* eh_public_key_path) {
+    private_key_t key = { 0 };
+    int ret = -1;
+
+    INFO("Reading EH private key from %s...\n", eh_private_key_path);
+    size_t key_size = sizeof(key);
+    if (!read_file(eh_private_key_path, &key, &key_size)) {
+        goto out;
+    }
+
+    ret = mbedtls_ecp_read_key(EC_CURVE_ID, &g_eh_key, (uint8_t*)&key, key_size);
+    if (ret != 0) {
+        ERROR("Failed to recreate private key: %d\n", ret);
+        goto out;
+    }
+
+    ret = mbedtls_ecp_check_privkey(&g_eh_key.grp, &g_eh_key.d);
+    if (ret != 0) {
+        ERROR("Loaded private key is invalid: %d\n", ret);
+        goto out;
+    }
+
+    INFO("Reading EH public key from %s...\n", eh_public_key_path);
+    key_size = sizeof(g_eh_public_key);
+    if (!read_file(eh_public_key_path, &g_eh_public_key, &key_size)) {
+        goto out;
+    }
+
+    ret = mbedtls_ecp_point_read_binary(&g_eh_key.grp, &g_eh_key.Q, (const uint8_t*)&g_eh_public_key,
+                                        key_size);
+    if (ret != 0) {
+        ERROR("Failed to recreate public key: %d\n", ret);
+        goto out;
+    }
+
+    ret = mbedtls_ecp_check_pubkey(&g_eh_key.grp, &g_eh_key.Q);
+    if (ret != 0) {
+        ERROR("Loaded public key is invalid: %d\n", ret);
+        goto out;
+    }
+
+    INFO("EH public key: ");
+    HEXDUMP(g_eh_public_key);
+out:
+    memset(&key, 0, sizeof(key));
     return ret;
 }
 
@@ -499,6 +551,10 @@ int main(int argc, char* argv[]) {
 
         case 'r': { // run
             ret = ve_load_enclave(enclave_path, enclave_state_path);
+            if (ret < 0)
+                goto out;
+
+            ret = eh_load_keys(eh_private_key_path, eh_public_key_path);
             if (ret < 0)
                 goto out;
 
