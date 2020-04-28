@@ -112,7 +112,7 @@ static char* read_line(void) {
 }
 
 // assumes vd has valid structure, caller needs to free returned buffer
-void* serialize_vd(const tvp_msg_register_voting_eh_ve_t* vd, size_t* vd_serialized_size) {
+static void* serialize_vd(const tvp_msg_register_voting_eh_ve_t* vd, size_t* vd_serialized_size) {
     const size_t constant_size = offsetof(tvp_msg_register_voting_eh_ve_t, voters);
     size_t voters_size = vd->num_voters * sizeof(*vd->voters);
     size_t vd_size = constant_size
@@ -125,22 +125,99 @@ void* serialize_vd(const tvp_msg_register_voting_eh_ve_t* vd, size_t* vd_seriali
         goto out;
     }
 
-    memcpy(vd_serialized, vd, constant_size);
-    memcpy(vd_serialized + constant_size, vd->voters, voters_size);
-    memcpy(vd_serialized + constant_size + voters_size, &vd->description_size,
-           sizeof(vd->description_size));
-    memcpy(vd_serialized + constant_size + voters_size + sizeof(vd->description_size),
-           vd->description, vd->description_size);
+    uint8_t* p = vd_serialized;
+    memcpy(p, vd, constant_size);
+    p += constant_size;
+    memcpy(p, vd->voters, voters_size);
+    p += voters_size;
+    memcpy(p, &vd->description_size, sizeof(vd->description_size));
+    p += sizeof(vd->description_size);
+    memcpy(p, vd->description, vd->description_size);
     *vd_serialized_size = vd_size;
 out:
     return vd_serialized;
+}
+
+// vd must be serialized
+static void* serialize_vdeh(const void* vd, size_t vd_size,
+                            const tvp_msg_register_voting_ve_eh_t* vdve, const void* ias_report,
+                            size_t ias_report_size, size_t* vdeh_serialized_size) {
+    int ret = -1;
+    size_t vdeh_size = vd_size
+                       + sizeof(*vdve)
+                       + sizeof(signature_t) // eh_sig
+                       + sizeof(public_key_t) // ve_public_key
+                       + sizeof(size_t) // ve_quote_ias_report_size
+                       + ias_report_size;
+    void* vdeh = malloc(vdeh_size);
+    if (!vdeh)
+        goto out;
+
+    uint8_t* p = vdeh;
+    memcpy(p, vd, vd_size);
+    p += vd_size;
+    memcpy(p, vdve, sizeof(*vdve));
+    p += sizeof(*vdve);
+
+    // sign hash(VD|VDVE)
+    signature_t* vdeh_sig = (signature_t*)p;
+    hash_t hash = { 0 };
+    mbedtls_sha256_context sha = { 0 };
+
+    mbedtls_sha256_init(&sha);
+    ret = mbedtls_sha256_starts_ret(&sha, /*is224=*/0);
+    if (ret)
+        goto out;
+
+    ret = mbedtls_sha256_update_ret(&sha, vd, vd_size);
+    if (ret)
+        goto out;
+
+    ret = mbedtls_sha256_update_ret(&sha, (const unsigned char*)vdve, sizeof(*vdve));
+    if (ret)
+        goto out;
+
+    ret = mbedtls_sha256_finish_ret(&sha, (unsigned char*)&hash);
+    if (ret)
+        goto out;
+
+    ret = sign_hash(vdeh_sig, &hash, &g_eh_key, &g_rng);
+    if (ret) {
+        ERROR("Signing hash(VD|VDVE) failed\n");
+        goto out;
+    }
+    // sanity check
+    ret = verify_hash(vdeh_sig, &hash, &g_eh_key);
+    if (ret) {
+        ERROR("Verifying sig(EH, hash(VD|VDVE)) failed\n");
+        goto out;
+    }
+    p += sizeof(*vdeh_sig);
+
+    public_key_t ve_pubkey = {0}; // TODO
+    memcpy(p, &ve_pubkey, sizeof(ve_pubkey));
+    p += sizeof(ve_pubkey);
+
+    memcpy(p, &ias_report_size, sizeof(ias_report_size));
+    p += sizeof(ias_report_size);
+
+    memcpy(p, ias_report, ias_report_size);
+    *vdeh_serialized_size = vdeh_size;
+    ret = 0;
+out:
+    if (ret) {
+        free(vdeh);
+        vdeh = NULL;
+    }
+    return vdeh;
 }
 
 static int submit_voting(void) {
     int ret = -1;
     size_t len;
     void* vd_serialized = NULL;
-    size_t vd_size = 0;
+    void* ias_report = NULL;
+    void* vdeh = NULL;
 
     tvp_msg_register_voting_eh_ve_t* vd = calloc(1, sizeof(*vd));
     if (!vd) {
@@ -213,60 +290,45 @@ static int submit_voting(void) {
     ret = ve_submit_voting(vd, &vdve);
     if (ret < 0) {
         printf("Voting submit failed: %d\n", ret);
-    } else {
-        puts("Voting submit successful\n");
+        goto out;
+    }
 
+    puts("Voting submit successful\n");
+
+    // prepare VDEH
+    size_t vd_size = 0;
     vd_serialized = serialize_vd(vd, &vd_size);
     if (!vd_serialized)
         goto out;
 
-#ifdef DEBUG
-        ret = write_file("vd.tvp", vd_serialized, vd_size);
-        if (ret < 0)
-            goto out;
+    ret = write_file("vd.tvp", vd_serialized, vd_size);
+    if (ret < 0)
+        goto out;
 
-        ret = write_file("vdve.tvp", &vdve, sizeof(vdve));
-        if (ret < 0)
-            goto out;
-#endif
-    }
+    ret = write_file("vdve.tvp", &vdve, sizeof(vdve));
+    if (ret < 0)
+        goto out;
 
-    // sign VD|VDVE
-    signature_t vdeh_sig = { 0 };
-    hash_t hash = { 0 };
-    mbedtls_sha256_context sha = { 0 };
+    ret = -1;
+    puts("Enter path to enclave IAS report (empty for default):");
+    char* ias_report_path = read_line();
+    if (!*ias_report_path)
+        ias_report_path = DEFAULT_ENCLAVE_REPORT_PATH;
+    size_t ias_report_size = 0;
+    ias_report = read_file(ias_report_path, NULL, &ias_report_size);
+    if (!ias_report)
+        goto out;
 
-    mbedtls_sha256_init(&sha);
-    ret = mbedtls_sha256_starts_ret(&sha, /*is224=*/0);
-    if (ret) {
+    size_t vdeh_size = 0;
+    vdeh = serialize_vdeh(vd_serialized, vd_size, &vdve, ias_report, ias_report_size, &vdeh_size);
+    if (!vdeh)
         goto out;
-    }
-    ret = mbedtls_sha256_update_ret(&sha, vd_serialized, vd_size);
-    if (ret) {
-        goto out;
-    }
-    ret = mbedtls_sha256_update_ret(&sha, (const unsigned char*)&vdve, sizeof(vdve));
-    if (ret) {
-        goto out;
-    }
-    ret = mbedtls_sha256_finish_ret(&sha, (unsigned char*)&hash);
-    if (ret) {
-        goto out;
-    }
 
-    ret = sign_hash(&vdeh_sig, &hash, &g_eh_key, &g_rng);
-    if (ret) {
-        ERROR("Signing hash(VD|VDVE) failed\n");
-        goto out;
-    }
-    // sanity check
-    ret = verify_hash(&vdeh_sig, &hash, &g_eh_key);
-    if (ret) {
-        ERROR("Verifying sig(EH, hash(VD|VDVE)) failed\n");
-        goto out;
-    }
+    ret = write_file("vdeh.tvp", vdeh, vdeh_size);
 
 out:
+    free(vdeh);
+    free(ias_report);
     free(vd_serialized);
     free(vd->description);
     free(vd->voters);
