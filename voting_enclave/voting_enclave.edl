@@ -1,6 +1,7 @@
 enclave {
     include "stdbool.h"
     include "sgx_tkey_exchange.h"
+    include "tvp_msg.h"
     from "sgx_tstdc.edl" import *;
 
     trusted {
@@ -19,6 +20,9 @@ enclave {
             size_t vd_size,
             [out, size=vdve_size] uint8_t* vdve,
             size_t vdve_size);
+
+        public int e_start_voting(
+            [in] const tvp_voting_id_t* vid);
 
         public int e_register_vote(
             [in, size=enc_vote_size] uint8_t* enc_vote,

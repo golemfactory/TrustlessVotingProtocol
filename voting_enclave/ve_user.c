@@ -263,8 +263,8 @@ int ve_unload_enclave(void) {
     return ret;
 }
 
-int ve_submit_voting(const tvp_msg_register_voting_eh_ve_t* voting_description,
-                     tvp_msg_register_voting_ve_eh_t* vdve) {
+int ve_register_voting(const tvp_msg_register_voting_eh_ve_t* voting_description,
+                       tvp_msg_register_voting_ve_eh_t* vdve) {
     int ret = -1;
     sgx_status_t sgx_ret = e_register_voting(g_enclave_id, &ret,
                                 (uint8_t*)voting_description, sizeof(*voting_description),
@@ -279,6 +279,16 @@ int ve_submit_voting(const tvp_msg_register_voting_eh_ve_t* voting_description,
     INFO("Sig: ");
     HEXDUMP(vdve->vid_sig);
 
+    return 0;
+}
+
+int ve_start_voting(const tvp_voting_id_t* vid) {
+    int ret = -1;
+    sgx_status_t sgx_ret = e_start_voting(g_enclave_id, &ret, vid);
+    if (sgx_ret != SGX_SUCCESS || ret < 0) {
+        ERROR("Voting start failed: %d\n", ret);
+        return ret;
+    }
     return 0;
 }
 

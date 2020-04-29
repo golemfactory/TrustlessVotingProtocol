@@ -79,7 +79,7 @@ static void sigint_handler(int _unused) {
 }
 
 static void print_banner(void) {
-    puts("Enter a command:");
+    puts("\nEnter a command:");
     puts("(s)ubmit a voting");
     puts("(b)egin the voting");
     puts("(e)nd the voting");
@@ -212,7 +212,7 @@ out:
     return vdeh;
 }
 
-static int submit_voting(const public_key_t* ve_pubkey) {
+static int register_voting(const public_key_t* ve_pubkey) {
     int ret = -1;
     size_t len;
     void* vd_serialized = NULL;
@@ -287,13 +287,13 @@ static int submit_voting(const public_key_t* ve_pubkey) {
 
     // send to enclave
     tvp_msg_register_voting_ve_eh_t vdve = { 0 };
-    ret = ve_submit_voting(vd, &vdve);
+    ret = ve_register_voting(vd, &vdve);
     if (ret < 0) {
-        printf("Voting submit failed: %d\n", ret);
+        printf("Voting registration failed: %d\n", ret);
         goto out;
     }
 
-    puts("Voting submit successful\n");
+    puts("Voting registration successful\n");
 
     // prepare VDEH
     size_t vd_size = 0;
@@ -326,6 +326,8 @@ static int submit_voting(const public_key_t* ve_pubkey) {
         goto out;
 
     ret = write_file("vdeh.tvp", vdeh, vdeh_size);
+    if (ret == 0)
+        printf("VDEH saved to 'vdeh.tvp'\n");
 
 out:
     free(vdeh);
@@ -338,7 +340,18 @@ out:
 }
 
 static int begin_voting(void) {
-    return -1;
+    int ret = -1;
+    tvp_voting_id_t vid = { 0 };
+    puts("Enter VID:");
+    char* vid_str = read_line();
+    if (parse_hex(vid_str, &vid, sizeof(vid)) < 0) {
+        ERROR("Invalid VID\n");
+        goto out;
+    }
+    ret = ve_start_voting(&vid);
+out:
+    free(vid_str);
+    return ret;
 }
 
 static int end_voting(void) {
@@ -649,7 +662,7 @@ int main(int argc, char* argv[]) {
                 ret = 0;
                 switch (buf[0]) {
                     case 's':
-                        ret = submit_voting(&ve_pubkey);
+                        ret = register_voting(&ve_pubkey);
                         break;
                     case 'b':
                         ret = begin_voting();

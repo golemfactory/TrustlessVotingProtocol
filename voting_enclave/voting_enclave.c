@@ -463,6 +463,9 @@ int e_register_voting(uint8_t* voting_description, size_t vd_size,
         goto out;
     }
 
+    eprintf("VID: ");
+    hexdump(g_voting.vid);
+
     tvp_msg_register_voting_ve_eh_t* vdve = (tvp_msg_register_voting_ve_eh_t*)vdve_buf;
 
     memcpy(&vdve->vid_nonce, &nonce, sizeof(nonce));
@@ -481,6 +484,40 @@ out:
     if (description) {
         free(description);
     }
+    sgx_thread_mutex_unlock(&g_mutex);
+    return ret;
+}
+
+/* ECALL: start voting */
+int e_start_voting(const tvp_voting_id_t* vid) {
+    int ret = -1;
+    sgx_thread_mutex_lock(&g_mutex);
+
+    if (!g_initialized) {
+        goto out;
+    }
+
+    if (!g_voting_registered) {
+        eprintf("No voting registered!\n");
+        goto out;
+    }
+
+    if (memcmp(&g_voting.vid.vid, vid, sizeof(g_voting.vid.vid))) {
+        eprintf("Voting not recognized!\n");
+        goto out;
+    }
+
+    if (g_voting.started) {
+        eprintf("Voting already started!\n");
+        goto out;
+    }
+
+    eprintf("Voting started, VID: ");
+    hexdump(g_voting.vid);
+    g_voting.started = true;
+
+    ret = 0;
+out:
     sgx_thread_mutex_unlock(&g_mutex);
     return ret;
 }
@@ -522,10 +559,10 @@ int e_register_vote(uint8_t* enc_vote, size_t enc_vote_size, uint8_t* ret_buf,
         goto out;
     }
 
-//    if (!g_voting.started) {
-//        eprintf("Voting not in progress!\n");
-//        goto out;
-//    }
+    if (!g_voting.started) {
+        eprintf("Voting not in progress!\n");
+        goto out;
+    }
 
     if (enc_vote_size < sizeof(public_key_t) + SALT_LEN + IV_LEN + sizeof(tvp_msg_vote_v_ve_t)) {
         eprintf("Encrypted msg too short!\n");
