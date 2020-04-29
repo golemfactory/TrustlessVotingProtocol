@@ -1,7 +1,6 @@
-from Crypto.Hash import SHA256
-from Crypto.PublicKey import ECC
-from Crypto.Signature import DSS
 import struct
+from Crypto.Hash import SHA256
+from utils import binary2key, validate_sig
 
 
 k = input("Input server pubkey: ")
@@ -42,14 +41,10 @@ h.update(desc)
 
 print("VID: " + h.hexdigest())
 
-der_key = b"\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00"
-der_key += k
-
-key = ECC.import_key(der_key)
-vr = DSS.new(key, 'fips-186-3')
-
-try:
+key = binary2key(k)
+if validate_sig(key, h, sig):
     vr.verify(h, sig)
     print("OK")
-except ValueError:
+else:
     print("ERR")
+    exit(1)

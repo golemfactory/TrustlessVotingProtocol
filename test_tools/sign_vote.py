@@ -3,20 +3,17 @@ from Crypto.Hash import SHA256
 from Crypto.Protocol.KDF import PBKDF2
 from Crypto.PublicKey import ECC
 from Crypto.Random import get_random_bytes
-from Crypto.Signature import DSS
 from Crypto.Util.Padding import pad, unpad
 import struct
 import sys
+from utils import point2binary, binary2key, validate_sig, generate_sig
 
-
-def point2pk(p):
-    return b'\x04' + p.x.to_bytes(32) + p.y.to_bytes(32)
 
 if len(sys.argv) > 1 and sys.argv[1][0] == 'g':
     key = ECC.generate(curve='secp256r1')
     with open('mykey.der', 'wb') as f:
         f.write(key.export_key(format='DER', compress=False))
-    k = point2pk(key.pointQ)
+    k = point2binary(key.pointQ)
     print("Public key: {}".format(k.hex()))
     exit(0)
 
@@ -25,20 +22,17 @@ with open('mykey.der', 'rb') as f:
 
 spk = input("Server public key: ")
 spk = bytes.fromhex(spk)
-der_key = b"\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00"
-der_key += spk
-spk = ECC.import_key(der_key)
+spk = binary2key(spk)
 
-v = input("Input vid: ")
-v = bytes.fromhex(v)
+vid = input("Input vid: ")
+vid = bytes.fromhex(vid)
 o = input("Input option: ")
 o = int(o)
 
-vote = point2pk(key.pointQ) + v + struct.pack("<I", o)
+vote = point2binary(key.pointQ) + vid + struct.pack("<I", o)
 
 h = SHA256.new(vote)
-signer = DSS.new(key, 'fips-186-3')
-sig = signer.sign(h)
+sig = generate_sig(key, h)
 
 dh_key = ECC.generate(curve='secp256r1')
 
@@ -52,7 +46,7 @@ pt = vote + sig
 cip = AES.new(aes_key, AES.MODE_CBC)
 ct = cip.encrypt(pad(pt, AES.block_size))
 
-msg = point2pk(dh_key.pointQ) + salt + cip.iv + ct
+msg = point2binary(dh_key.pointQ) + salt + cip.iv + ct
 print("Encrypted vote: " + msg.hex())
 
 
@@ -71,23 +65,23 @@ rv = vvr[:-64]
 sig = vvr[-64:]
 
 h = SHA256.new(rv)
+print("hash(rv): " + h.hexdigest())
 h = SHA256.new(h.digest())
-h.update(v)
-vr = DSS.new(spk, 'fips-186-3')
-try:
-    vr.verify(h, sig)
+h.update(vid)
+
+if validate_sig(spk, h, sig):
     print("Signature OK")
-except ValueError:
+else:
     print("Invalid signature!")
     exit(1)
 
-if rv[:65] == point2pk(key.pointQ):
+if rv[:65] == point2binary(key.pointQ):
     print("VVR voter public key OK (is ours)")
 else:
     print("VVR voter public key OK is invalid!")
     exit(1)
 
-if rv[65:65+32] == v:
+if rv[65:65+32] == vid:
     print("VVR VID OK")
 else:
     print("VVR VID invalid!")
