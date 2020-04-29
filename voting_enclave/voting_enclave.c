@@ -42,6 +42,7 @@ static const sgx_attributes_t g_seal_attributes = {ENCLAVE_SEALING_ATTRIBUTES, 0
 typedef struct {
     tvp_voting_id_t vid;
     uint32_t num_options;
+    uint32_t* results;
     bool started;
     size_t num_voters;
     tvp_voter_t* voters;
@@ -453,6 +454,12 @@ int e_register_voting(uint8_t* voting_description, size_t vd_size,
         eprintf("Failed to allocate votes buf!\n");
         goto out;
     }
+
+    g_voting.results = calloc(g_voting.num_options, sizeof(*g_voting.results));
+    if (!g_voting.results) {
+        eprintf("Failed to allocate results buf!\n");
+        goto out;
+    }
     g_voting.votes = votes;
     votes = NULL;
     g_voting.started = false;
@@ -692,6 +699,8 @@ int e_register_vote(uint8_t* enc_vote, size_t enc_vote_size, uint8_t* ret_buf,
     }
 
     g_voting.votes[voter_id] = rv;
+    // TODO: check for overflow
+    g_voting.results[vote->vote.option - 1] += g_voting.voters[voter_id].weight;
     rv = NULL;
 
 out_send_result:
@@ -764,6 +773,105 @@ out:
     mbedtls_aes_free(&aes_ctx);
     mbedtls_ecp_keypair_free(&voter_key);
     mbedtls_mpi_free(&key);
+    return ret;
+}
+
+static size_t get_num_votes(void) {
+    size_t num_votes = 0;
+    for (size_t i = 0; i < g_voting.num_voters; ++i) {
+        if (g_voting.votes[i])
+            num_votes++;
+    }
+    return num_votes;
+}
+
+static size_t get_vrve_size(void) {
+    return sizeof(tvp_msg_stop_voting_ve_eh_t)
+         + sizeof(uint32_t) * g_voting.num_options // results
+         + sizeof(hash_t) * get_num_votes(); // votes
+}
+
+/* ECALL: stop voting */
+/* if (vrve == NULL && vrve_size_required != NULL) *vrve_size_required = get_vrve_size(); */
+int e_stop_voting(const tvp_voting_id_t* vid, uint8_t* vrve, size_t vrve_size,
+                  size_t* vrve_size_required) {
+    int ret = -1;
+    sgx_thread_mutex_lock(&g_mutex);
+
+    if (!g_initialized) {
+        goto out;
+    }
+
+    if (!g_voting_registered) {
+        eprintf("No voting registered!\n");
+        goto out;
+    }
+
+    if (memcmp(&g_voting.vid.vid, vid, sizeof(g_voting.vid.vid))) {
+        eprintf("Voting not recognized!\n");
+        goto out;
+    }
+
+    // TODO: prevent restarting a voting
+    if (!g_voting.started) {
+        eprintf("Voting already stopped!\n");
+        goto out;
+    }
+
+    if (!vrve && vrve_size_required) {
+        *vrve_size_required = get_vrve_size();
+        ret = 0;
+        goto out;
+    }
+
+    if (!vrve || vrve_size != get_vrve_size()) {
+        eprintf("Invalid vrve or vrve_size!\n");
+        goto out;
+    }
+
+    eprintf("Voting stopped, VID: ");
+    hexdump(g_voting.vid);
+    g_voting.started = false;
+
+    // serialize VRVE
+    uint8_t* p = vrve;
+    memcpy(p, &g_voting.vid, sizeof(g_voting.vid));
+    p += sizeof(g_voting.vid);
+    memcpy(p, &g_voting.num_options, sizeof(g_voting.num_options));
+    p += sizeof(g_voting.num_options);
+    memcpy(p, g_voting.results, sizeof(*g_voting.results) * g_voting.num_options);
+    p += sizeof(*g_voting.results) * g_voting.num_options;
+    size_t num_votes = get_num_votes();
+    memcpy(p, &num_votes, sizeof(num_votes));
+    p += sizeof(num_votes);
+    for (size_t i = 0; i < g_voting.num_voters; ++i) {
+        if (g_voting.votes[i]) {
+            ret = mbedtls_sha256_ret((const uint8_t*)g_voting.votes[i],
+                                     sizeof(tvp_registered_vote_t), p, /*is224=*/0);
+            if (ret) {
+                eprintf("Failed to hash vote: %d\n", ret);
+                goto out;
+            }
+            p += sizeof(hash_t);
+        }
+    }
+
+    // sign hash(previous fields)
+    hash_t hash = { 0 };
+    ret = mbedtls_sha256_ret(vrve, vrve_size - sizeof(signature_t), (uint8_t*)&hash, /*is224=*/0);
+    if (ret) {
+        eprintf("Failed to hash VRVE: %d\n", ret);
+        goto out;
+    }
+
+    ret = sign_hash((signature_t*)p, &hash, &g_signing_key, &g_rng);
+    if (ret) {
+        eprintf("Failed to sign VRVE hash: %d\n", ret);
+        goto out;
+    }
+    ret = 0;
+out:
+    sgx_thread_mutex_unlock(&g_mutex);
     return ret;
 }
 
