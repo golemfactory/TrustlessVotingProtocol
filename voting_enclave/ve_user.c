@@ -292,6 +292,31 @@ int ve_start_voting(const tvp_voting_id_t* vid) {
     return 0;
 }
 
+int ve_stop_voting(const tvp_voting_id_t* vid, void** vrve_ptr, size_t* vrve_size) {
+    int ret = -1;
+    sgx_status_t sgx_ret = e_stop_voting(g_enclave_id, &ret, vid, NULL, 0, vrve_size);
+    if (sgx_ret != SGX_SUCCESS || ret < 0) {
+        ERROR("Failed to get voting results size: %d\n", ret);
+        goto out;
+    }
+    DBG("VRVE size: %zu\n", *vrve_size);
+
+    *vrve_ptr = malloc(*vrve_size);
+    if (!*vrve_ptr) {
+        ERROR("Out of memory!\n");
+        goto out;
+    }
+
+    sgx_ret = e_stop_voting(g_enclave_id, &ret, vid, *vrve_ptr, *vrve_size, NULL);
+    if (sgx_ret != SGX_SUCCESS || ret < 0) {
+        ERROR("Failed to get voting results: %d\n", ret);
+        goto out;
+    }
+    ret = 0;
+out:
+    return ret;
+}
+
 int ve_submit_vote(uint8_t* enc_vote, size_t enc_vote_size) {
     int ret = -1;
 

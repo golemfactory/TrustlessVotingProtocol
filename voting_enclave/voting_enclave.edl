@@ -24,6 +24,12 @@ enclave {
         public int e_start_voting(
             [in] const tvp_voting_id_t* vid);
 
+        public int e_stop_voting(
+            [in] const tvp_voting_id_t* vid,
+            [out, size=vrve_size] uint8_t* vrve,
+            size_t vrve_size,
+            [out] size_t* vrve_size_required);
+
         public int e_register_vote(
             [in, size=enc_vote_size] uint8_t* enc_vote,
             size_t enc_vote_size,

@@ -113,4 +113,6 @@ int ve_start_voting(const tvp_voting_id_t* vid);
 
 int ve_submit_vote(uint8_t* enc_vote, size_t enc_vote_size);
 
+int ve_stop_voting(const tvp_voting_id_t* vid, void** vrve_ptr, size_t* vrve_size);
+
 #endif /* VE_USER_H */

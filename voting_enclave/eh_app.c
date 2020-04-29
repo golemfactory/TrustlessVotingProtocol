@@ -355,7 +355,54 @@ out:
 }
 
 static int end_voting(void) {
-    return -1;
+    int ret = -1;
+    tvp_voting_id_t vid = { 0 };
+    void* vrve = NULL;
+
+    puts("Enter VID:");
+    char* vid_str = read_line();
+    if (parse_hex(vid_str, &vid, sizeof(vid)) < 0) {
+        ERROR("Invalid VID\n");
+        goto out;
+    }
+
+    size_t vrve_size = 0;
+    ret = ve_stop_voting(&vid, &vrve, &vrve_size);
+    if (ret < 0)
+        goto out;
+
+    ret = write_file("vrve.tvp", vrve, vrve_size);
+    if (ret < 0)
+        goto out;
+
+    size_t vreh_size = vrve_size + sizeof(signature_t);
+    vrve = realloc(vrve, vreh_size);
+    if (!vrve) {
+        ret = -1;
+        ERROR("Out of memory\n");
+        goto out;
+    }
+
+    hash_t hash = { 0 };
+
+    ret = mbedtls_sha256_ret(vrve, vrve_size, (uint8_t*)&hash, /*is224=*/0);
+    if (ret < 0)
+        goto out;
+
+    ret = sign_hash(vrve + vrve_size, &hash, &g_eh_key, &g_rng);
+    if (ret < 0)
+        goto out;
+
+    ret = write_file("vreh.tvp", vrve, vreh_size);
+    if (ret < 0)
+        goto out;
+
+    puts("VREH:");
+    hexdump_mem(vrve, vreh_size);
+out:
+    free(vid_str);
+    free(vrve);
+    return ret;
 }
 
 static int submit_vote(void) {

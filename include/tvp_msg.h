@@ -171,13 +171,14 @@ typedef struct { // EH -> VE
     tvp_voting_id_t vid;
 } tvp_msg_stop_voting_eh_ve_t;
 
+// this is always serialized
 typedef struct { // VE -> EH [VRVE]
     tvp_voting_id_t vid;
-    uint32_t        num_options; // not really needed but included for convenience
-    uint32_t*       results;     // [!] pointer to untrusted memory, weighted option counts
+    uint32_t        num_options;          // not really needed but included for convenience
+    //uint32_t      results[num_options]; // array of weighted option counts
     size_t          num_votes;
-    hash_t*         votes;       // [!] pointer to untrusted memory, hash(tvp_registered_vote_t)
-    signature_t     ve_sig;      // sig(VE, hash(previous fields))
+    //hash_t        votes[num_votes];     // array of hash(tvp_registered_vote_t)
+    signature_t     ve_sig;               // sig(VE, hash(previous fields))
 } tvp_msg_stop_voting_ve_eh_t;
 
 typedef struct { // EH -> V [VREH]
