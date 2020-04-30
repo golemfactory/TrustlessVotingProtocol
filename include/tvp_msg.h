@@ -38,8 +38,8 @@ typedef uint8_t signature_t[64];
 /*! Size of the EC signature (in bytes). */
 #define EC_SIGNATURE_SIZE sizeof(signature_t)
 
-#define IV_LEN 16
-#define SALT_LEN IV_LEN
+#define IV_SIZE 16
+#define SALT_SIZE IV_SIZE
 #define SIZE_WITH_PAD(x) ((x) / 16 * 16 + 16)
 
 // protocol message type
@@ -128,12 +128,6 @@ typedef struct { // EH -> VE
 } tvp_start_voting_eh_ve_t;
 
 /*
-handshake: V<->VE  {ECDH}
-           both parties know their respective public keys already
-*/
-/////////////////// TODO ///////////////////
-
-/*
 vote:
 V->VE   VV:{vote:{voter_id, VID, option}, sig(V, hash(vote))}
         VE creates RV:{vote, nonce}, checks voter_list, saves RV
@@ -145,6 +139,12 @@ typedef struct {
     uint32_t        option;
 } tvp_vote_t;
 
+/*
+Encrypted vote is preceded by:
+- sizeof(public_key_t) bytes of EC point (DH)
+- SALT_SIZE bytes of salt to KDF
+- IV_SIZE bytes of AES IV
+*/
 typedef struct { // V -> VE [VV]
     tvp_vote_t  vote;
     signature_t sig;   // sig(V, hash(vote))

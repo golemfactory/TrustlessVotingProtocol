@@ -107,12 +107,12 @@ int ve_load_enclave(const char* enclave_path, const char* sealed_state_path,
  */
 int ve_unload_enclave(void);
 
-int ve_register_voting(const tvp_msg_register_voting_eh_ve_t* voting_description,
+int ve_register_voting(const tvp_msg_register_voting_eh_ve_t* vd,
                        tvp_msg_register_voting_ve_eh_t* vdve);
 
 int ve_start_voting(const tvp_voting_id_t* vid);
 
-int ve_submit_vote(uint8_t* enc_vote, size_t enc_vote_size);
+int ve_submit_vote(void* enc_vote, size_t enc_vote_size, void** vvr_ptr, size_t* vvr_size);
 
 int ve_stop_voting(const tvp_voting_id_t* vid, void** vrve_ptr, size_t* vrve_size);
 

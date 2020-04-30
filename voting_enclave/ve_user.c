@@ -40,10 +40,9 @@ static int load_ve(const char* enclave_path, bool debug_enabled, const char* sea
     // ECALL: enclave initialization
     sgx_status_t sgx_ret;
     if (enclave_pubkey) {
-        sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size,
-                               (uint8_t*)enclave_pubkey, sizeof(*enclave_pubkey));
+        sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size, enclave_pubkey);
     } else {
-        sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size, NULL, 0);
+        sgx_ret = e_initialize(g_enclave_id, &ret, sealed_state, sealed_size, NULL);
     }
 
     if (sgx_ret != SGX_SUCCESS) {
@@ -267,21 +266,16 @@ int ve_unload_enclave(void) {
     return ret;
 }
 
-int ve_register_voting(const tvp_msg_register_voting_eh_ve_t* voting_description,
+int ve_register_voting(const tvp_msg_register_voting_eh_ve_t* vd,
                        tvp_msg_register_voting_ve_eh_t* vdve) {
     int ret = -1;
     sgx_status_t sgx_ret = e_register_voting(g_enclave_id, &ret,
-                                (uint8_t*)voting_description, sizeof(*voting_description),
-                                (uint8_t*)vdve, sizeof(*vdve));
+                                             vd, sizeof(*vd),
+                                             vdve, sizeof(*vdve));
     if (sgx_ret != SGX_SUCCESS || ret < 0) {
         ERROR("Voting registration failed: %d\n", ret);
         return ret;
     }
-
-    INFO("Nonce: ");
-    HEXDUMP(vdve->vid_nonce);
-    INFO("Sig: ");
-    HEXDUMP(vdve->vid_sig);
 
     return 0;
 }
@@ -321,34 +315,32 @@ out:
     return ret;
 }
 
-int ve_submit_vote(uint8_t* enc_vote, size_t enc_vote_size) {
+int ve_submit_vote(void* enc_vote, size_t enc_vote_size, void** vvr_ptr, size_t* vvr_size) {
     int ret = -1;
 
-    size_t ret_buf_size = IV_LEN + SIZE_WITH_PAD(sizeof(tvp_msg_vote_ve_v_t));
-    uint8_t* ret_buf = malloc(ret_buf_size);
-    if (!ret_buf) {
+    *vvr_size = IV_SIZE + SIZE_WITH_PAD(sizeof(tvp_msg_vote_ve_v_t));
+    *vvr_ptr = malloc(*vvr_size);
+    if (!*vvr_ptr) {
         ERROR("Out of memory!\n");
         goto out;
     }
 
-    sgx_status_t sgx_ret = e_register_vote(g_enclave_id, &ret, enc_vote, enc_vote_size, ret_buf,
-                                           ret_buf_size);
+    sgx_status_t sgx_ret = e_register_vote(g_enclave_id, &ret, enc_vote, enc_vote_size, *vvr_ptr,
+                                           *vvr_size);
     if (sgx_ret != SGX_SUCCESS || ret < 0) {
         ERROR("Adding the vote failed: %d\n", ret);
         goto out;
     }
 
-    INFO("Encrypted VVR: ");
-    hexdump_mem(ret_buf, ret_buf_size);
-
     ret = 0;
 out:
-    free(ret_buf);
+    if (ret != 0)
+        *vvr_size = 0;
     return ret;
 }
 
 // OCALL: save sealed enclave state
-int o_store_sealed_data(const uint8_t* sealed_data, size_t sealed_size) {
+int o_store_sealed_data(const void* sealed_data, size_t sealed_size) {
     INFO("Saving sealed enclave state to '%s'\n", g_sealed_state_path);
     return write_file(g_sealed_state_path, sealed_data, sealed_size);
 }

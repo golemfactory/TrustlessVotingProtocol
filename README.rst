@@ -37,7 +37,6 @@ First, the Enclave Host (EH) initializes the enclave::
    Saving sealed enclave state to 've.state'
    [VE] Enclave public key: 0455950238f73ed6088349506110d57571fd490f011f86e245786fcaa77d9418f43a36cd49c9d047e0122e232f98ba50a2e18f18cc8a5ea79b040ca749976e4136
    [VE] Enclave public key hash: c598e7abaed4bfa52b0c724cf5270ddc2d9980dbeaa14825471093511bde3cf0
-   [VE] Copying enclave public key...
    [VE] Enclave initialization OK
    Saving public enclave key to 've_pubkey'
    Enclave unloaded
@@ -64,6 +63,7 @@ both be verified by voters from the IAS report which is shown later.
 Next, the EH generates their keys::
 
    $ ./eh_app gen-key
+   Generating EH key pair...
    EH public key: 042dc764f526e013a563dfdf34d70e2c8e9b18bdd6f507cb419838abdc81d08a1b72c11265a9761807f6e0eb908b5f49da796c6579a9d8752c50f116d1733b3188
    Writing EH private key to 'eh_privkey'
    Writing EH public key to 'eh_pubkey'
@@ -90,29 +90,28 @@ Now EH can create a voting::
    (e)nd the voting
    submit a (v)ote
    s
-   Enter start date:
+   Enter start time:
    1970-01-01 13:37
-   Enter end date:
+   Enter end time:
    1970-02-20 13:37
    Enter number of options:
    5
    Enter number of voters:
    2
-   Enter public key (hex) of voter number 0:
-   0419189619538aeb34454616deca803d900d997de6edd8033de608ebbe5ab6d4af4642c0bff5dc9a145392aafceb48f4d132470509ad6233761e9645641c5b2b78
-   Enter weight of voter number 0:
-   3
    Enter public key (hex) of voter number 1:
-   04ed428c65862e1c804531bc4e718d4896f35bf500301f6c063a5e4602fde986db67dbf7696d27b5053d7f694191ea3f946543d14b8fda1a4c59731924d5c52fec
+   0419189619538aeb34454616deca803d900d997de6edd8033de608ebbe5ab6d4af4642c0bff5dc9a145392aafceb48f4d132470509ad6233761e9645641c5b2b78
    Enter weight of voter number 1:
+   3
+   Enter public key (hex) of voter number 2:
+   04ed428c65862e1c804531bc4e718d4896f35bf500301f6c063a5e4602fde986db67dbf7696d27b5053d7f694191ea3f946543d14b8fda1a4c59731924d5c52fec
+   Enter weight of voter number 2:
    1
    Enter description:
    My voting
    [VE] VID: ee86a2915d32efe09bcb7389e9d075d07f6fa15afdbfae5ccbd406f05decc27e
-   Nonce: 6de24b8b00fe8892e956fd945f8e851dd8108131a0748f4fb5a7e33a45430b6a
-   Sig: 9b4f19a88fced96ada0910deb7a4caa284f394e48da2a3d2055e094734a778d8d155a8e957051bf9b4ffa019677a29534ea3f949afed4a664749c8f0bd87a847
    Voting registration successful
-   
+   VDVE nonce: 6de24b8b00fe8892e956fd945f8e851dd8108131a0748f4fb5a7e33a45430b6a
+   VDVE signature: 9b4f19a88fced96ada0910deb7a4caa284f394e48da2a3d2055e094734a778d8d155a8e957051bf9b4ffa019677a29534ea3f949afed4a664749c8f0bd87a847
    Enter path to enclave IAS report (empty for default):
    
    VDEH saved to 'vdeh.tvp'
@@ -164,8 +163,8 @@ the EH app::
 The EH app will return an encrypted VVR which can be pasted into the voter app for verification::
 
    Input VVR: 12b5da2b4e7bc916bf873a2b18a94e940121255227c550378bf4e8edb74dd2b3bbb2e066d2a4bc04b5f21481d79ab5c5fa745119c956744fd1bd48610a7b9137ed5f4e2e5bc6390f9f81b7830fc5c632de7579d5325cd9fa4f7975c2156654563ba854981bd5021fd86ace734a11a82a0ddad9c0f7774e120c9f5b976f542f683a60c7b83c09a136ef20bee8a08bafd56e5533610c297d468bdee1835f40a12ab70bad208c28fffe76103054375da55ebdd328c7fe6022a117fb29e5c9806b840afedf0c2fc0e99f26ffe7be8ecc7fd1cffbaf61025c97daf3062eb9f63a146c
-   hash(rv): e347fa23b107c073260528e69ccc3f08a70ceb60d829348cc26c5d190eac3a91
-   Signature OK
+   hash(RV): e347fa23b107c073260528e69ccc3f08a70ceb60d829348cc26c5d190eac3a91
+   VVR signature OK
    VVR voter public key OK (is ours)
    VVR VID OK
    VVR voter option OK
