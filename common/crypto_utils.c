@@ -7,26 +7,14 @@
 
 #include "crypto_utils.h"
 
-static int export_public_key(mbedtls_ecp_keypair* key_pair, uint8_t* public_key,
-                             size_t public_key_size) {
+static int export_public_key(mbedtls_ecp_keypair* key_pair, public_key_t* public_key) {
     int ret = MBEDTLS_ERR_ECP_BAD_INPUT_DATA;
     if (!key_pair)
         goto out;
 
-    size_t pubkey_size;
+    size_t pubkey_size = sizeof(*public_key);
     ret = mbedtls_ecp_point_write_binary(&key_pair->grp, &key_pair->Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
-                                         &pubkey_size, NULL, 0);
-    if (ret != MBEDTLS_ERR_ECP_BUFFER_TOO_SMALL) {
-        goto out;
-    }
-
-    ret = MBEDTLS_ERR_ECP_BAD_INPUT_DATA;
-    if (pubkey_size != public_key_size) {
-        goto out;
-    }
-
-    ret = mbedtls_ecp_point_write_binary(&key_pair->grp, &key_pair->Q, MBEDTLS_ECP_PF_UNCOMPRESSED,
-                                         &pubkey_size, public_key, pubkey_size);
+                                         &pubkey_size, (uint8_t*)public_key, pubkey_size);
     if (ret != 0) {
         goto out;
     }
@@ -36,15 +24,15 @@ out:
     return ret;
 }
 
-int generate_key_pair(int curve_id, mbedtls_ecp_keypair* key_pair, uint8_t* public_key,
-                      size_t public_key_size, mbedtls_ctr_drbg_context* rng_ctx) {
+int generate_key_pair(int curve_id, mbedtls_ecp_keypair* key_pair, public_key_t* public_key,
+                      mbedtls_ctr_drbg_context* rng_ctx) {
     mbedtls_ecp_keypair_init(key_pair);
     int ret = mbedtls_ecp_gen_key(curve_id, key_pair, mbedtls_ctr_drbg_random, rng_ctx);
     if (ret != 0) {
         goto out;
     }
 
-    ret = export_public_key(key_pair, public_key, public_key_size);
+    ret = export_public_key(key_pair, public_key);
 out:
     return ret;
 }
@@ -53,14 +41,14 @@ static int hash_update_voter(mbedtls_sha256_context* sha, const tvp_voter_t* vot
     if (mbedtls_sha256_update_ret(sha, voter->public_key, sizeof(voter->public_key))) {
         return -1;
     }
-    if (mbedtls_sha256_update_ret(sha, (unsigned char*)&voter->weight, sizeof(voter->weight))) {
+    if (mbedtls_sha256_update_ret(sha, (uint8_t*)&voter->weight, sizeof(voter->weight))) {
         return -1;
     }
     return 0;
 }
 
-int hash_voting(tvp_voting_id_t* vid, const uint8_t* nonce, size_t nonce_len,
-                       const tvp_msg_register_voting_eh_ve_t* vd) {
+int hash_voting(tvp_voting_id_t* vid, const nonce_t* nonce,
+                const tvp_msg_register_voting_eh_ve_t* vd) {
     _Static_assert(sizeof(vid->vid) == 32, "Invalid hash size!\n");
     mbedtls_sha256_context sha = { 0 };
     mbedtls_sha256_init(&sha);
@@ -70,7 +58,7 @@ int hash_voting(tvp_voting_id_t* vid, const uint8_t* nonce, size_t nonce_len,
         goto out;
     }
 
-    ret = mbedtls_sha256_update_ret(&sha, nonce, nonce_len);
+    ret = mbedtls_sha256_update_ret(&sha, (const uint8_t*)nonce, sizeof(*nonce));
     if (ret) {
         goto out;
     }
@@ -93,7 +81,7 @@ int hash_voting(tvp_voting_id_t* vid, const uint8_t* nonce, size_t nonce_len,
         }
     }
     ADD_FIELD_TO_SHA(description_size);
-    ret = mbedtls_sha256_update_ret(&sha, (unsigned char*)vd->description, vd->description_size);
+    ret = mbedtls_sha256_update_ret(&sha, (uint8_t*)vd->description, vd->description_size);
     if (ret) {
         goto out;
     }
@@ -111,7 +99,7 @@ out:
 }
 
 int generate_nonce(nonce_t* nonce, mbedtls_ctr_drbg_context* rng_ctx) {
-    return mbedtls_ctr_drbg_random(rng_ctx, (unsigned char*)nonce, sizeof(*nonce));
+    return mbedtls_ctr_drbg_random(rng_ctx, (uint8_t*)nonce, sizeof(*nonce));
 }
 
 int sign_hash(signature_t* sig, const hash_t* hash, mbedtls_ecp_keypair* key,
@@ -124,7 +112,7 @@ int sign_hash(signature_t* sig, const hash_t* hash, mbedtls_ecp_keypair* key,
     mbedtls_mpi_init(&r);
     mbedtls_mpi_init(&s);
 
-    ret = mbedtls_ecdsa_sign(&key->grp, &r, &s, &key->d, (const unsigned char *)hash, hlen,
+    ret = mbedtls_ecdsa_sign(&key->grp, &r, &s, &key->d, (const uint8_t*)hash, hlen,
                              mbedtls_ctr_drbg_random, rng_ctx);
     if (ret) {
         goto out;
@@ -180,8 +168,8 @@ out:
     return ret;
 }
 
-int kdf(uint8_t* shared_sec, size_t shared_sec_len, uint8_t* salt, size_t salt_len, uint8_t* out,
-        size_t out_len) {
+int kdf(uint8_t* shared_sec, size_t shared_sec_size, uint8_t* salt, size_t salt_size, uint8_t* out,
+        size_t out_size) {
     int ret = -1;
     mbedtls_md_context_t sha_ctx;
 
@@ -193,7 +181,8 @@ int kdf(uint8_t* shared_sec, size_t shared_sec_len, uint8_t* salt, size_t salt_l
     }
 
     /* TODO: 1000 is just for dev, increase it later. */
-    ret = mbedtls_pkcs5_pbkdf2_hmac(&sha_ctx, shared_sec, shared_sec_len, salt, salt_len, 1000, out_len, out);
+    ret = mbedtls_pkcs5_pbkdf2_hmac(&sha_ctx, shared_sec, shared_sec_size, salt, salt_size,
+                                    1000, out_size, out);
 
 out:
     mbedtls_md_free(&sha_ctx);

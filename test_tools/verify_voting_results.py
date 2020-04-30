@@ -18,7 +18,7 @@ else:
     print("Invalid VREH signature!")
     exit(1)
 
-x = input("Inpute VE public key: ")
+x = input("Input VE public key: ")
 ve_pubkey = binary2key(bytes.fromhex(x))
 sig = vrve[-64:]
 vrve = vrve[:-64]

@@ -6,19 +6,18 @@ enclave {
 
     trusted {
         public int e_initialize(
-            [in, size=sealed_size] uint8_t* sealed_data,
+            [in, size=sealed_size] void* sealed_data,
             size_t sealed_size,
-            [out, size=pubkey_size] uint8_t* pubkey,
-            size_t pubkey_size);
+            [out] public_key_t* pubkey);
 
         public int e_get_report(
             [in] const sgx_target_info_t* target_info,
             [out] sgx_report_t* report);
 
         public int e_register_voting(
-            [in, size=vd_size] uint8_t* voting_description,
+            [in, size=vd_size] const void* vd,
             size_t vd_size,
-            [out, size=vdve_size] uint8_t* vdve,
+            [out, size=vdve_size] void* vdve,
             size_t vdve_size);
 
         public int e_start_voting(
@@ -26,15 +25,15 @@ enclave {
 
         public int e_stop_voting(
             [in] const tvp_voting_id_t* vid,
-            [out, size=vrve_size] uint8_t* vrve,
+            [out, size=vrve_size] void* vrve,
             size_t vrve_size,
             [out] size_t* vrve_size_required);
 
         public int e_register_vote(
-            [in, size=enc_vote_size] uint8_t* enc_vote,
+            [in, size=enc_vote_size] void* enc_vote,
             size_t enc_vote_size,
-            [out, size=ret_buf_size] uint8_t* ret_buf,
-            size_t ret_buf_size);
+            [out, size=vvr_size] void* vvr,
+            size_t vvr_size);
     };
 
     untrusted {
@@ -42,7 +41,7 @@ enclave {
             [in, string] const char* str);
 
         int o_store_sealed_data(
-            [in, size=data_size] const uint8_t* data,
+            [in, size=data_size] const void* data,
             size_t data_size);
     };
 };

@@ -226,6 +226,31 @@ int parse_hex(const char* hex, void* buffer, size_t buffer_size) {
     return 0;
 }
 
+char* read_line(void) {
+    size_t buf_size = 256;
+    char* str = malloc(buf_size);
+    if (!str)
+        return NULL;
+    int c;
+    size_t len = 0;
+
+    while ((c = getchar()) != EOF && c != '\n') {
+        str[len++] = c;
+        if (len == buf_size) {
+            buf_size *= 2;
+            char* old = str;
+            str = realloc(str, buf_size);
+            if (!str) {
+                free(old);
+                return NULL;
+            }
+        }
+    }
+
+    str[len] = '\0';
+    return str;
+}
+
 /* Returns 0 on failure */
 sgx_enclave_id_t enclave_load(const char* enclave_path, bool debug_enabled) {
     int is_token_updated = 0;

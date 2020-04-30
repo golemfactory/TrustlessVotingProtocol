@@ -81,6 +81,9 @@ void hexdump_mem(const void* data, size_t size);
 /*! Parse hex string to buffer */
 int parse_hex(const char* hex, void* buffer, size_t buffer_size);
 
+/*! Read line from stdio, caller needs to free the returned buffer */
+char* read_line(void);
+
 /*! Load an SGX enclave from file */
 sgx_enclave_id_t enclave_load(const char* enclave_path, bool debug_enabled);
 

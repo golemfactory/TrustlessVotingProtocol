@@ -15,7 +15,7 @@ if len(sys.argv) > 1 and sys.argv[1][0] == 'g':
     with open(keyfile, 'wb') as f:
         f.write(key.export_key(format='DER', compress=False))
     k = point2binary(key.pointQ)
-    print("Public key: {}".format(k.hex()))
+    print("Voter public key: {}".format(k.hex()))
     exit(0)
 
 keyfile = sys.argv[1]
@@ -72,9 +72,9 @@ h = SHA256.new(h.digest())
 h.update(vid)
 
 if validate_sig(spk, h, sig):
-    print("Signature OK")
+    print("VVR Signature OK")
 else:
-    print("Invalid signature!")
+    print("Invalid VVR signature!")
     exit(1)
 
 if rv[:65] == point2binary(key.pointQ):

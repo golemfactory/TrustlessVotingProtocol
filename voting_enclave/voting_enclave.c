@@ -25,12 +25,12 @@
 /* Intel's assert.h does not define this. */
 #define static_assert _Static_assert
 
-static bool                     g_initialized                     = false;
-static uint8_t                  g_public_key[EC_PUB_KEY_SIZE]     = {0};
-static uint8_t                  g_public_key_hash[sizeof(hash_t)] = {0};
-static mbedtls_ecp_keypair      g_signing_key                     = {0};
-static mbedtls_ecp_group        g_ec_group                        = {0};
-static mbedtls_ctr_drbg_context g_rng                             = {0};
+static bool                     g_initialized     = false;
+static public_key_t             g_public_key      = {0};
+static hash_t                   g_public_key_hash = {0};
+static mbedtls_ecp_keypair      g_signing_key     = {0};
+static mbedtls_ecp_group        g_ec_group        = {0};
+static mbedtls_ctr_drbg_context g_rng             = {0};
 static sgx_thread_mutex_t       g_mutex = SGX_THREAD_MUTEX_INITIALIZER;
 
 /*! Enclave flags that will matter for sealing/unsealing secrets (keys).
@@ -66,8 +66,8 @@ static void eprintf(const char* fmt, ...) {
     o_print(buf);
 }
 
-static void _hexdump(void* data, size_t size) {
-    uint8_t* ptr = (uint8_t*)data;
+static void _hexdump(const void* data, size_t size) {
+    const uint8_t* ptr = data;
 
     for (size_t i = 0; i < size; i++)
         eprintf("%02x", ptr[i]);
@@ -77,10 +77,9 @@ static void _hexdump(void* data, size_t size) {
 #define hexdump(x) _hexdump((void*)&x, sizeof(x))
 
 // Seal enclave state
-static int seal_data(const mbedtls_ecp_keypair* key_pair, const uint8_t* public_key,
-                     size_t public_key_size) {
+static int seal_data(const mbedtls_ecp_keypair* key_pair, const public_key_t* public_key) {
     sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
-    uint8_t* sealed_data = NULL;
+    void* sealed_data = NULL;
     size_t sealed_size = 0;
     int ret = -1;
 
@@ -102,7 +101,7 @@ static int seal_data(const mbedtls_ecp_keypair* key_pair, const uint8_t* public_
     }
 
     // public key
-    memcpy(unsealed_data + private_key_size, public_key, public_key_size);
+    memcpy(unsealed_data + private_key_size, public_key, sizeof(*public_key));
 
     // We can provide additional plaintext data to be a part of the encrypted blob's MAC if needed.
     sealed_size = sgx_calc_sealed_data_size(0, unsealed_size);
@@ -146,9 +145,8 @@ out:
 }
 
 // Restore enclave keys from sealed data
-static int unseal_data(const uint8_t* sealed_data, size_t sealed_size,
-                       mbedtls_ecp_keypair* key_pair, uint8_t* public_key, size_t public_key_size,
-                       uint8_t* public_key_hash) {
+static int unseal_data(const void* sealed_data, size_t sealed_size, mbedtls_ecp_keypair* key_pair,
+                       public_key_t* public_key, hash_t* public_key_hash) {
     sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
     uint8_t* unsealed_data = NULL;
     uint32_t unsealed_size = 0;
@@ -166,7 +164,7 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size,
         goto out;
     }
 
-    if (unsealed_size != EC_PRIV_KEY_SIZE + public_key_size) {
+    if (unsealed_size != EC_PRIV_KEY_SIZE + sizeof(*public_key)) {
         eprintf("Invalid unsealed data size\n");
         goto out;
     }
@@ -201,9 +199,10 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size,
         goto out;
     }
 
-    memcpy(public_key, unsealed_data + EC_PRIV_KEY_SIZE, public_key_size);
+    memcpy(public_key, unsealed_data + EC_PRIV_KEY_SIZE, sizeof(*public_key));
 
-    ret = mbedtls_ecp_point_read_binary(&g_ec_group, &key_pair->Q, public_key, public_key_size);
+    ret = mbedtls_ecp_point_read_binary(&g_ec_group, &key_pair->Q, (uint8_t*)public_key,
+                                        sizeof(*public_key));
     if (ret != 0) {
         eprintf("Failed to recreate public key: %d\n", ret);
         goto out;
@@ -215,7 +214,8 @@ static int unseal_data(const uint8_t* sealed_data, size_t sealed_size,
         goto out;
     }
 
-    ret = mbedtls_sha256_ret(public_key, public_key_size, public_key_hash, /*is224=*/0);
+    ret = mbedtls_sha256_ret((const uint8_t*)public_key, sizeof(*public_key),
+                             (uint8_t*)public_key_hash, /*is224=*/0);
     if (ret != 0) {
         eprintf("Failed to hash public key: %d\n", ret);
         goto out;
@@ -274,8 +274,8 @@ out:
 
 /* ECALL: initialize enclave
  * If sealed_data is provided, unseal private key from it. If not, generate new key pair.
- * Enclave public key is stored in pubkey if pubkey_size is enough for it. */
-int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size_t pubkey_size) {
+ * Enclave public key is stored in pubkey if not NULL. */
+int e_initialize(void* sealed_data, size_t sealed_size, public_key_t* pubkey) {
     int ret = -1;
 
     sgx_thread_mutex_lock(&g_mutex);
@@ -287,8 +287,7 @@ int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size
     mbedtls_ecp_keypair_init(&g_signing_key);
     if (sealed_data == NULL || sealed_size == 0) {
         eprintf("Generating enclave signing key...\n");
-        ret = generate_key_pair(EC_CURVE_ID, &g_signing_key, g_public_key, sizeof(g_public_key),
-                                &g_rng);
+        ret = generate_key_pair(EC_CURVE_ID, &g_signing_key, &g_public_key, &g_rng);
         if (ret < 0)
             goto out;
 
@@ -296,12 +295,12 @@ int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size
         if (ret < 0)
             goto out;
 
-        ret = seal_data(&g_signing_key, g_public_key, sizeof(g_public_key));
+        ret = seal_data(&g_signing_key, &g_public_key);
         if (ret < 0)
             goto out;
     } else {
-        ret = unseal_data(sealed_data, sealed_size, &g_signing_key, g_public_key,
-                          sizeof(g_public_key), g_public_key_hash);
+        ret = unseal_data(sealed_data, sealed_size, &g_signing_key, &g_public_key,
+                          &g_public_key_hash);
         if (ret < 0)
             goto out;
     }
@@ -318,15 +317,8 @@ int e_initialize(uint8_t* sealed_data, size_t sealed_size, uint8_t* pubkey, size
     hexdump(g_public_key_hash);
 
     ret = -1;
-    if (pubkey_size > 0 && pubkey_size != sizeof(g_public_key)) {
-        eprintf("Invalid public key size\n");
-        goto out;
-    }
-
-    if (pubkey_size == sizeof(g_public_key)) {
-        eprintf("Copying enclave public key...\n");
-        memcpy(pubkey, &g_public_key, sizeof(g_public_key));
-    }
+    if (pubkey)
+        memcpy(pubkey, &g_public_key, sizeof(*pubkey));
 
     eprintf("Enclave initialization OK\n");
     ret = 0;
@@ -392,8 +384,8 @@ out_err:
 }
 
 /* ECALL: register new voting */
-int e_register_voting(uint8_t* voting_description, size_t vd_size,
-                      uint8_t* vdve_buf, size_t vdve_size) {
+int e_register_voting(const void* voting_description, size_t vd_size, void* vdve_buf,
+                      size_t vdve_size) {
     int ret = -1;
     tvp_voter_t* voters = NULL;
     char* description = NULL;
@@ -440,7 +432,7 @@ int e_register_voting(uint8_t* voting_description, size_t vd_size,
         goto out;
     }
 
-    if (hash_voting(&g_voting.vid, (uint8_t*)&nonce, sizeof(nonce), vd)) {
+    if (hash_voting(&g_voting.vid, &nonce, vd)) {
         eprintf("Failed to hash voting!\n");
         goto out;
     }
@@ -533,18 +525,18 @@ out:
  * ECALL: register a vote
  * enc_vote structure:
  * - sizeof(public_key_t) bytes of EC point (DH)
- * - SALT_LEN bytes of salt to KDF
- * - IV_LEN bytes of AES IV
+ * - SALT_SIZE bytes of salt to KDF
+ * - IV_SIZE bytes of AES IV
  */
-int e_register_vote(uint8_t* enc_vote, size_t enc_vote_size, uint8_t* ret_buf,
-                    size_t ret_buf_size) {
+int e_register_vote(void* enc_vote, size_t enc_vote_size, void* vvr_buf,
+                    size_t vvr_size) {
     int ret = -1;
     mbedtls_mpi key;
     mbedtls_ecp_point eph_key_mat;
     mbedtls_ecp_keypair voter_key;
     mbedtls_aes_context aes_ctx;
     uint8_t* salt = NULL;
-    uint8_t iv[IV_LEN];
+    uint8_t iv[IV_SIZE];
     uint8_t* dec_vote = NULL;
     mbedtls_sha256_context sha;
     tvp_registered_vote_t* rv = NULL;
@@ -571,11 +563,11 @@ int e_register_vote(uint8_t* enc_vote, size_t enc_vote_size, uint8_t* ret_buf,
         goto out;
     }
 
-    if (enc_vote_size < sizeof(public_key_t) + SALT_LEN + IV_LEN + sizeof(tvp_msg_vote_v_ve_t)) {
+    if (enc_vote_size < sizeof(public_key_t) + SALT_SIZE + IV_SIZE + sizeof(tvp_msg_vote_v_ve_t)) {
         eprintf("Encrypted msg too short!\n");
         goto out;
     }
-    if ((enc_vote_size - sizeof(public_key_t) - SALT_LEN - IV_LEN) % 16 != 0) {
+    if ((enc_vote_size - sizeof(public_key_t) - SALT_SIZE - IV_SIZE) % 16 != 0) {
         eprintf("Invalid length of encrypted msg!\n");
         goto out;
     }
@@ -601,11 +593,11 @@ int e_register_vote(uint8_t* enc_vote, size_t enc_vote_size, uint8_t* ret_buf,
     }
 
     salt = enc_vote;
-    enc_vote += SALT_LEN;
-    enc_vote_size -= SALT_LEN;
+    enc_vote += SALT_SIZE;
+    enc_vote_size -= SALT_SIZE;
 
     uint8_t aes_key[32];
-    ret = kdf(shared, sizeof(shared), salt, SALT_LEN, aes_key, sizeof(aes_key));
+    ret = kdf(shared, sizeof(shared), salt, SALT_SIZE, aes_key, sizeof(aes_key));
     if (ret) {
         eprintf("Failed to derive aes key!\n");
         goto out;
@@ -617,8 +609,8 @@ int e_register_vote(uint8_t* enc_vote, size_t enc_vote_size, uint8_t* ret_buf,
     }
 
     memcpy(iv, enc_vote, sizeof(iv));
-    enc_vote += IV_LEN;
-    enc_vote_size -= IV_LEN;
+    enc_vote += IV_SIZE;
+    enc_vote_size -= IV_SIZE;
 
     dec_vote = calloc(enc_vote_size, 1);
     if (!dec_vote) {
@@ -707,6 +699,12 @@ out_send_result:
     mbedtls_aes_free(&aes_ctx);
     mbedtls_aes_init(&aes_ctx);
 
+    unsigned char vvr_data[SIZE_WITH_PAD(sizeof(tvp_msg_vote_ve_v_t))] = { 0 };
+    if (vvr_size != IV_SIZE + sizeof(vvr_data)) {
+        eprintf("Invalid vvr_size!\n");
+        goto out;
+    }
+
     ret = mbedtls_aes_setkey_enc(&aes_ctx, aes_key, 8 * sizeof(aes_key));
     if (ret) {
         goto out;
@@ -717,7 +715,6 @@ out_send_result:
         goto out;
     }
 
-    unsigned char vvr_data[SIZE_WITH_PAD(sizeof(tvp_msg_vote_ve_v_t))] = { 0 };
     tvp_msg_vote_ve_v_t* vvr = (tvp_msg_vote_ve_v_t*)&vvr_data;
     memcpy(&vvr->rv, g_voting.votes[voter_id], sizeof(vvr->rv));
 
@@ -747,19 +744,14 @@ out_send_result:
         goto out;
     }
 
-    if (ret_buf_size != IV_LEN + sizeof(vvr_data)) {
-        eprintf("Invalid ret_buf size!\n");
-        goto out;
-    }
-
     /* Add padding */
     for (size_t i = sizeof(*vvr); i < sizeof(vvr_data); ++i) {
         vvr_data[i] = sizeof(vvr_data) - sizeof(*vvr);
     }
 
-    memcpy(ret_buf, &iv, IV_LEN);
+    memcpy(vvr_buf, &iv, IV_SIZE);
     ret = mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_ENCRYPT, sizeof(vvr_data), iv, vvr_data,
-                                ret_buf + IV_LEN);
+                                vvr_buf + IV_SIZE);
     if (ret) {
         eprintf("Encryption failed!\n");
         goto out;
@@ -793,7 +785,7 @@ static size_t get_vrve_size(void) {
 
 /* ECALL: stop voting */
 /* if (vrve == NULL && vrve_size_required != NULL) *vrve_size_required = get_vrve_size(); */
-int e_stop_voting(const tvp_voting_id_t* vid, uint8_t* vrve, size_t vrve_size,
+int e_stop_voting(const tvp_voting_id_t* vid, void* vrve, size_t vrve_size,
                   size_t* vrve_size_required) {
     int ret = -1;
     sgx_thread_mutex_lock(&g_mutex);

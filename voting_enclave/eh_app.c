@@ -75,45 +75,6 @@ static void usage(const char* exec) {
            DEFAULT_ENCLAVE_HOST_PRIVATE_KEY_PATH "\n");
 }
 
-static bool g_keep_listening = true;
-static void sigint_handler(int _unused) {
-    (void)_unused;
-    g_keep_listening = false;
-}
-
-static void print_banner(void) {
-    puts("\nEnter a command:");
-    puts("(s)ubmit a voting");
-    puts("(b)egin the voting");
-    puts("(e)nd the voting");
-    puts("submit a (v)ote");
-}
-
-static char* read_line(void) {
-    size_t buf_size = 256;
-    char* str = malloc(buf_size);
-    if (!str)
-        return NULL;
-    int c;
-    size_t len = 0;
-
-    while ((c = getchar()) != EOF && c != '\n') {
-        str[len++] = c;
-        if (len == buf_size) {
-            buf_size *= 2;
-            char* old = str;
-            str = realloc(str, buf_size);
-            if (!str) {
-                free(old);
-                return NULL;
-            }
-        }
-    }
-
-    str[len] = '\0';
-    return str;
-}
-
 // assumes vd has valid structure, caller needs to free returned buffer
 static void* serialize_vd(const tvp_msg_register_voting_eh_ve_t* vd, size_t* vd_serialized_size) {
     const size_t constant_size = offsetof(tvp_msg_register_voting_eh_ve_t, voters);
@@ -228,9 +189,9 @@ static int register_voting(const public_key_t* ve_pubkey) {
         goto out;
     }
 
-    puts("Enter start date:");
+    puts("Enter start time:");
     if (!fgets(vd->start_time, sizeof(vd->start_time), stdin)) {
-        fprintf(stderr, "Reading start date failed\n");
+        fprintf(stderr, "Reading start time failed\n");
         goto out;
     }
     len = strlen(vd->start_time);
@@ -238,9 +199,9 @@ static int register_voting(const public_key_t* ve_pubkey) {
         vd->start_time[len - 1] = '\0';
     }
 
-    puts("Enter end date:");
+    puts("Enter end time:");
     if (!fgets(vd->end_time, sizeof(vd->end_time), stdin)) {
-        fprintf(stderr, "Reading end date failed\n");
+        fprintf(stderr, "Reading end time failed\n");
         goto out;
     }
     len = strlen(vd->end_time);
@@ -267,19 +228,19 @@ static int register_voting(const public_key_t* ve_pubkey) {
     }
 
     for (size_t i = 0; i < vd->num_voters; ++i) {
-        printf("Enter public key (hex) of voter number %zu:\n", i);
+        printf("Enter public key (hex) of voter number %zu:\n", i + 1);
         char* key_str = read_line();
         // parse_hex checks for proper string length
         if (parse_hex(key_str, &vd->voters[i].public_key, sizeof(vd->voters[i].public_key)) < 0) {
-            fprintf(stderr, "Invalid public key of voter number %zu\n", i);
+            fprintf(stderr, "Invalid public key of voter number %zu\n", i + 1);
             free(key_str);
             goto out;
         }
         free(key_str);
 
-        printf("Enter weight of voter number %zu:\n", i);
+        printf("Enter weight of voter number %zu:\n", i + 1);
         if (fscanf(stdin, "%u%*1[ \r\n]", &vd->voters[i].weight) != 1) {
-            fprintf(stderr, "Reading weight of voter number %zu failed\n", i);
+            fprintf(stderr, "Reading weight of voter number %zu failed\n", i + 1);
             goto out;
         }
     }
@@ -296,7 +257,11 @@ static int register_voting(const public_key_t* ve_pubkey) {
         goto out;
     }
 
-    puts("Voting registration successful\n");
+    INFO("Voting registration successful\n");
+    INFO("VDVE nonce: ");
+    HEXDUMP(vdve.vid_nonce);
+    INFO("VDVE signature: ");
+    HEXDUMP(vdve.vid_sig);
 
     // prepare VDEH
     size_t vd_size = 0;
@@ -336,8 +301,10 @@ out:
     free(vdeh);
     free(ias_report);
     free(vd_serialized);
-    free(vd->description);
-    free(vd->voters);
+    if (vd) {
+        free(vd->description);
+        free(vd->voters);
+    }
     free(vd);
     return ret;
 }
@@ -378,6 +345,7 @@ static int end_voting(void) {
     if (ret < 0)
         goto out;
 
+    // VREH is VRVE|eh_signature
     size_t vreh_size = vrve_size + sizeof(signature_t);
     vrve = realloc(vrve, vreh_size);
     if (!vrve) {
@@ -410,43 +378,45 @@ out:
 
 static int submit_vote(void) {
     int ret = -1;
-    char buf[0x400] = { 0 };
-    size_t len = 0;
+    char* buf = NULL;
+    void* enc_vote = NULL;
 
     puts("Enter encrypted vote:");
-    if (!fgets(buf, sizeof buf, stdin)) {
-        puts("Reading encrypted vote failed!");
-        goto out;
-    }
-    len = strlen(buf);
-    if (len && buf[len - 1] == '\n') {
-        buf[len - 1] = '\0';
-        --len;
-    }
+    buf = read_line();
+    size_t len = strlen(buf);
     if (len % 2 != 0) {
-        puts("Invalid encrypted vote length!");
+        ERROR("Invalid encrypted vote length!\n");
         goto out;
     }
 
-    uint8_t* enc_vote = malloc(len / 2);
+    enc_vote = malloc(len / 2);
     if (!enc_vote) {
-        puts("Out of memory!\n");
+        ERROR("Out of memory!\n");
         goto out;
     }
     if (parse_hex(buf, enc_vote, len / 2) < 0) {
         goto out;
     }
 
-    ret = ve_submit_vote(enc_vote, len / 2);
+    void* vvr = NULL;
+    size_t vvr_size;
+    ret = ve_submit_vote(enc_vote, len / 2, &vvr, &vvr_size);
+    if (ret == 0) {
+        INFO("Encrypted VVR: ");
+        hexdump_mem(vvr, vvr_size);
+        free(vvr);
+    }
 
 out:
+    free(buf);
+    free(enc_vote);
     return ret;
 }
 
 static int eh_generate_keys(const char* eh_private_key_path, const char* eh_public_key_path) {
     void* buf = NULL;
-    int ret = generate_key_pair(EC_CURVE_ID, &g_eh_key, g_eh_public_key, sizeof(g_eh_public_key),
-                                &g_rng);
+    INFO("Generating EH key pair...\n");
+    int ret = generate_key_pair(EC_CURVE_ID, &g_eh_key, &g_eh_public_key, &g_rng);
     if (ret != 0) {
         ERROR("Failed to seed crypto PRNG: %d\n", ret);
         goto out;
@@ -478,7 +448,7 @@ static int eh_generate_keys(const char* eh_private_key_path, const char* eh_publ
     ret = write_file(eh_public_key_path, g_eh_public_key, sizeof(g_eh_public_key));
 out:
     if (buf)
-        memset(buf, 0, private_key_size);
+        memset(buf, 0, private_key_size); // TODO: secure wipe
     free(buf);
     return ret;
 }
@@ -527,7 +497,7 @@ static int eh_load_keys(const char* eh_private_key_path, const char* eh_public_k
     INFO("EH public key: ");
     HEXDUMP(g_eh_public_key);
 out:
-    memset(&key, 0, sizeof(key));
+    memset(&key, 0, sizeof(key)); // TODO: secure wipe
     return ret;
 }
 
@@ -543,6 +513,20 @@ static int rng_init(void) {
         ERROR("Failed to seed crypto PRNG: %d\n", ret);
     }
     return ret;
+}
+
+static bool g_keep_listening = true;
+static void sigint_handler(int _unused) {
+    (void)_unused;
+    g_keep_listening = false;
+}
+
+static void print_banner(void) {
+    puts("\nEnter a command:");
+    puts("(s)ubmit a voting");
+    puts("(b)egin the voting");
+    puts("(e)nd the voting");
+    puts("submit a (v)ote");
 }
 
 int main(int argc, char* argv[]) {
@@ -732,6 +716,7 @@ int main(int argc, char* argv[]) {
                         puts("Invalid option!\n");
                         break;
                 }
+
                 if (ret < 0) {
                     g_keep_listening = false;
                 }
