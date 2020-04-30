@@ -10,10 +10,10 @@
 #define IAS_URL_BASE "https://api.trustedservices.intel.com/sgx/dev"
 
 /*! Default URL for IAS "verify attestation evidence" API endpoint. */
-#define IAS_URL_REPORT IAS_URL_BASE "/attestation/v3/report"
+#define IAS_URL_REPORT IAS_URL_BASE "/attestation/v4/report"
 
 /*! Default URL for IAS "Retrieve SigRL" API endpoint. EPID group id is added at the end. */
-#define IAS_URL_SIGRL IAS_URL_BASE "/attestation/v3/sigrl"
+#define IAS_URL_SIGRL IAS_URL_BASE "/attestation/v4/sigrl"
 
 /*!
  *  \brief Get size of an open file.
@@ -81,11 +81,12 @@ int ve_get_quote(const char* sp_id_str, const char* sp_quote_type_str, const cha
  *  \param[in] nonce       (Optional) Nonce to be included in the IAS report (max 32 characters).
  *  \param[in] quote_path  Path to the enclave quote.
  *  \param[in] report_path Path where IAS report will be saved.
+ *  \param[in] sig_path    Path where IAS report's signature will be saved.
  *
  *  \return 0 on success, negative on error.
  */
 int ve_verify_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
-                    const char* report_path);
+                    const char* report_path, const char* sig_path);
 
 /*!
  *  \brief Load voting enclave and restore its state from a sealed blob.
