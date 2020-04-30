@@ -11,20 +11,22 @@ from utils import point2binary, binary2key, validate_sig, generate_sig
 
 if len(sys.argv) > 1 and sys.argv[1][0] == 'g':
     key = ECC.generate(curve='secp256r1')
-    with open('mykey.der', 'wb') as f:
+    keyfile = sys.argv[2]
+    with open(keyfile, 'wb') as f:
         f.write(key.export_key(format='DER', compress=False))
     k = point2binary(key.pointQ)
     print("Public key: {}".format(k.hex()))
     exit(0)
 
-with open('mykey.der', 'rb') as f:
+keyfile = sys.argv[1]
+with open(keyfile, 'rb') as f:
     key = ECC.import_key(f.read())
 
 spk = input("Input VE public key: ")
 spk = bytes.fromhex(spk)
 spk = binary2key(spk)
 
-vid = input("Input vid: ")
+vid = input("Input VID: ")
 vid = bytes.fromhex(vid)
 o = input("Input option: ")
 o = int(o)
@@ -59,13 +61,13 @@ cip = AES.new(aes_key, AES.MODE_CBC, vvr[:16])
 vvr = unpad(cip.decrypt(vvr[16:]), AES.block_size)
 
 if len(vvr) != 65 + 32 + 4 + 32 + 64:
-    print("Invalid vvr length!\n")
+    print("Invalid VVR length!\n")
     exit(1)
 rv = vvr[:-64]
 sig = vvr[-64:]
 
 h = SHA256.new(rv)
-print("hash(rv): " + h.hexdigest())
+print("hash(RV): " + h.hexdigest())
 h = SHA256.new(h.digest())
 h.update(vid)
 
