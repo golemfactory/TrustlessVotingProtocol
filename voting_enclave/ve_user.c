@@ -108,6 +108,10 @@ static int generate_enclave_quote(sgx_spid_t sp_id, sgx_quote_sign_type_t quote_
         goto out;
     }
 
+    INFO("MR_ENCLAVE: ");
+    HEXDUMP(report.body.mr_enclave);
+    INFO("MR_SIGNER:  ");
+    HEXDUMP(report.body.mr_signer);
     // Prepare random nonce
     // TODO: ideally this nonce would be received from a 3rd party on a different system
     // that will verify the QE report
