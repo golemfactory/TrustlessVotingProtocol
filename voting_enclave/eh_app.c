@@ -31,6 +31,7 @@ static struct option g_options[] = {
     { "api-key", required_argument, 0, 'k' },
     { "quote-path", required_argument, 0, 'q' },
     { "report-path", required_argument, 0, 'r' },
+    { "sig-path", required_argument, 0, 'g' },
     { 0, 0, 0, 0 }
 };
 
@@ -65,6 +66,8 @@ static void usage(const char* exec) {
            DEFAULT_ENCLAVE_QUOTE_PATH "\n");
     printf("  --report-path, -r PATH     Path to save IAS quote verification report to, default: "
            DEFAULT_ENCLAVE_REPORT_PATH "\n");
+    printf("  --sig-path, -g PATH        Path to save IAS quote verification report's signature to, default: "
+           DEFAULT_ENCLAVE_REPORT_SIG_PATH "\n");
     printf("Available run options:\n");
     printf("  --eh-pubkey-path, -P PATH  Path to load enclave host's public key from, default: "
            DEFAULT_ENCLAVE_HOST_PUBLIC_KEY_PATH "\n");
@@ -554,11 +557,12 @@ int main(int argc, char* argv[]) {
     char* enclave_path = DEFAULT_ENCLAVE_PATH;
     char* quote_path = DEFAULT_ENCLAVE_QUOTE_PATH;
     char* report_path = DEFAULT_ENCLAVE_REPORT_PATH;
+    char* sig_path = DEFAULT_ENCLAVE_REPORT_SIG_PATH;
     char* mode = NULL;
     int ret = -1;
 
     while (true) {
-        this_option = getopt_long(argc, argv, "hs:e:p:P:K:i:t:k:q:r:", g_options, NULL);
+        this_option = getopt_long(argc, argv, "hs:e:p:P:K:i:t:k:q:r:g:", g_options, NULL);
 
         if (this_option == -1)
             break;
@@ -596,6 +600,9 @@ int main(int argc, char* argv[]) {
                 break;
             case 'r':
                 report_path = optarg;
+                break;
+            case 'g':
+                sig_path = optarg;
                 break;
             default:
                 printf("Unknown option: %c\n", this_option);
@@ -674,7 +681,7 @@ int main(int argc, char* argv[]) {
             assert(nonce[32] == 0);
             printf("IAS nonce: %s\n", nonce);
 
-            ret = ve_verify_quote(api_key, nonce, quote_path, report_path);
+            ret = ve_verify_quote(api_key, nonce, quote_path, report_path, sig_path);
             break;
         }
 

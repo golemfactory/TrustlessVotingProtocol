@@ -93,10 +93,13 @@ MBEDTLS_OBJS := \
 	$(MBEDTLS_LIB)/entropy.o \
 	$(MBEDTLS_LIB)/md.o \
 	$(MBEDTLS_LIB)/oid.o \
+	$(MBEDTLS_LIB)/pem.o \
 	$(MBEDTLS_LIB)/pk.o \
 	$(MBEDTLS_LIB)/pkcs5.o \
 	$(MBEDTLS_LIB)/pkparse.o \
 	$(MBEDTLS_LIB)/pk_wrap.o \
+	$(MBEDTLS_LIB)/rsa.o \
+	$(MBEDTLS_LIB)/rsa_internal.o \
 	$(MBEDTLS_LIB)/sha256.o
 
 $(LIBRARY_BIN): attestation.o cJSON.o ias.o util.o $(MBEDTLS)/.build_succeeded
