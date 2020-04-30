@@ -20,7 +20,7 @@ if len(sys.argv) > 1 and sys.argv[1][0] == 'g':
 with open('mykey.der', 'rb') as f:
     key = ECC.import_key(f.read())
 
-spk = input("Server public key: ")
+spk = input("Input VE public key: ")
 spk = bytes.fromhex(spk)
 spk = binary2key(spk)
 
