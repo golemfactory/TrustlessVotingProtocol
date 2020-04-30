@@ -22,6 +22,9 @@
 /*! Default file name to save IAS verification report to. */
 #define DEFAULT_ENCLAVE_REPORT_PATH "ve.quote.report"
 
+/*! Default file name to save IAS verification report's signature to. */
+#define DEFAULT_ENCLAVE_REPORT_SIG_PATH "ve.quote.report.sig"
+
 /*! Enables enclave debugging and NULLIFIES ENCLAVE MEMORY PROTECTION. */
 #define ENCLAVE_DEBUG_ENABLED 1
 

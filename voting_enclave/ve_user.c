@@ -215,7 +215,7 @@ out:
 }
 
 int ve_verify_quote(const char* ias_api_key, const char* nonce, const char* quote_path,
-                    const char* report_path) {
+                    const char* report_path, const char* sig_path) {
     int ret = -1;
     void* quote_data = NULL;
 
@@ -240,7 +240,7 @@ int ve_verify_quote(const char* ias_api_key, const char* nonce, const char* quot
     }
     quote_size = sizeof(sgx_quote_t) + quote->signature_len;
 
-    ret = ias_verify_quote(ias, quote_data, quote_size, nonce, report_path, NULL, NULL, NULL);
+    ret = ias_verify_quote(ias, quote_data, quote_size, nonce, report_path, sig_path, NULL, NULL);
 
 out:
     free(quote_data);
