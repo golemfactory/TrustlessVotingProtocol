@@ -2,6 +2,11 @@
 TVP
 ***
 
+Docs
+====
+
+See our `whitepaper <doc/TVP-WP.pdf>`_ and other `docs <doc>`_.
+
 Building
 ========
 
